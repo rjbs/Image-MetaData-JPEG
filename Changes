@@ -1,3 +1,269 @@
+2004-08-08  Stefano Bettelli  <bettelli@cpan.org>
+
+        * saved current version as Image-MetaData-JPEG-0.11, posted to CPAN
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (set_Exif_data_GPS_DATA): 
+	thanks to the previous changes, when creating a new (empty) GPS
+	subdirectory, it is not necessary to insert a 'GPSInfo' offset record,
+	only the 'GPS' REFERENCE record; if fact, its value would in any case
+	be wrong, and it will be calculated automatically at update time.
+	We need however to set the "extra" field of this REFERENCE record,
+	in order to mimick the case when it is parsed directly from a file.
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_TIFF_header): 
+	since we decided not to register offset records, the 'IFD0_Pointer'
+	record was dropped (i.e., its value is read and used, but it is
+	not stored in the main record list). This change is even more
+	natural since its value is almost always 8. Trivial doc. changes.
+
+	* lib/Image/MetaData/JPEG/Segment_dumpers.pl (dump_ifd): modified
+	this method to take changes in parse_ifd into account. There is a
+	special treatement for tags holding an IFD offset; these tags are
+	regenerated on the fly (since they are no more stored) and their
+	value is recalculated and written to the raw data area. This should
+	change absolutely nothing in the final file layout.
+	(dump_app1_exif): the final call to reparse_as() is no more necessary;
+	this was the old warning note: currently, the dump process in Exif
+	APP1 recalculates some offsets (IFD links), but does not overwrite
+	the parsed records, so that the raw data area and the parsed structure
+	are not in sync. Reparsing the segment is a quick fix, but I really
+	should update the IFD links' records, or, even better, avoid to write
+	these offsets among the records, because they are not interesting
+	to the end user.
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_ifd): this 
+	method, after setting up the concerned IFD, searches for deeper
+	IFDs with the help of %IFD_SUBDIRS and, if found, parses them
+	recursively; for every new subdir, a REFERENCE record is created,
+	pointing to it. This method was changed in the following way:
+	the originating offset record is removed because it contains very
+	fragile information (it should be recalculated every time something
+	changes in Exif APP1, for instance, carrying close to zero info);
+	moreover, its textual tag is saved in the "extra" field of the
+	generated REFERENCE record (just for reference).
+	
+2004-08-07  Stefano Bettelli  <bettelli@cpan.org>
+
+	* Saved as PRIVATE version 0.10f
+
+	* lib/Image/MetaData/JPEG/Tables.pm: deeply modified the layout.
+	Some variables make now use of JPEG_lookup, instead of declaring
+	redundantly other variables. This may be a bit slow, but is cleaner.
+	Also, I have declared all private variables with 'my' and all
+	exportable ones with 'ours'. Then I have prepared subclasses of
+	exportable variables with %EXPORT_TAGS, so that they can be 
+	imported selectively by the various modules and files. No variable
+	is now exported by default.
+
+	* lib/Image/MetaData/JPEG.pod: trivial change in the section about
+	Record objects to document the new JPEG_lookup function. But this
+	documentation needs to be revised to report about import rules.
+	
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (get_Exif_data): updated
+	to use JPEG_lookup instead of searching directly %JPEG_RECORD_NAME;
+	(set_Exif_data_GPS_DATA): same thing
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl: updated the %IPTC_tags
+	and %IPTC_names hashes in order to use JPEG_lookup.
+	
+	* lib/Image/MetaData/JPEG/Record.pm (get_description): modified
+	to use JPEG_lookup instead of searching directly %JPEG_RECORD_NAME.
+
+	* lib/Image/MetaData/JPEG/Record.pm: moved @JPEG_RECORD_TYPE_LENGTH,
+	@JPEG_RECORD_TYPE_CATEGORY and @JPEG_RECORD_TYPE_SIGN to Table class.
+
+	* lib/Image/MetaData/JPEG/Tables.pm (JPEG_lookup): this helper
+	function returns record data from the %JPEG_RECORD_NAME hash. The
+	argument list is a list of keys for exploring the variuous hash
+	levels; e.g., if the list is ('APP1', 'IFD0', 'GPS', 0x1e), the
+	selected value is $JPEG_RECORD_NAME{APP1}{IFD0}{GPS}{0x1e}.
+	If, at some point during the search, an argument fails (it is not
+	a valid key) or it is not defined, the search is interrupted, and
+	undef is returned. Note also that the return value can be a string
+	or a hash reference, depending on the hash search depth. If the key
+	lookup for the last argument fails, a reverse lookup is run (i.e.,
+	the key corresponding to the value equal to the last user argument
+	is searched). If even this lookup fails, undef is returned.
+
+2004-08-06  Stefano Bettelli  <bettelli@cpan.org>
+
+	* Saved as PRIVATE version 0.10e
+
+	* lib/Image/MetaData/JPEG.pod: added a section about changing Exif
+	data (which currently is limited to GPS data), and a very extensive
+	appendix about valid records for Exif APP1, which will be used as
+	a line guide for the future Exfi setters.
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (set_Exif_data_GPS_DATA): 
+	this method implements the setter of Exif GPS data; it includes a
+	lot of format checks and it is moderately simple, since GPS tags
+	are not too complicated. A lot of tests added to check GPS data
+	syntax. Documentation updated (so, read there ...)
+	
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (set_Exif_data): entry
+	point for setters of Exif APP1 data. It works a hash reference $data,
+	$what in /GPS_DATA|...todo/ and $action in /ADD|UPDATE|SET/, but this
+	interface might not be "official".
+	
+	* lib/Image/MetaData/JPEG/Segment_dumpers.pl (dump_app1_exif): added
+	a reparse_as at the end of this method; currently, the dump process
+	in Exif APP1 recalculates some offsets (IFD links), but does not
+	overwrite the parsed records, so that the raw data area and the
+	parsed structure are not in sync. Reparsing the segment is a quick
+	fix, but I really should update the IFD links' records, or, even
+	better, avoid to write these offsets among the records, because they
+	are not interesting to the end user.
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (get_Exif_data): check
+	added; this method returns immediately (with undef) if the current
+	Segment is not an Exif APP1 Segment.
+
+	* lib/Image/MetaData/JPEG/Record.pm (get_description): C-strings,
+	i.e., null-terminated strings, have now the last null character
+	chopped off, but a '.' is written after the closing '"'. This 
+	should make the output more readable.
+	
+2004-08-05  Stefano Bettelli  <bettelli@localhost>
+
+	* Saved as PRIVATE version 0.10d
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (get_Exif_data): updated
+	the Structure-level method to deal with the different data types
+	returned by the Segment-level method. Tests added.
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (get_Exif_data): added
+	a second argument ($what) controlling the subset of Exif records
+	returned by this method (this is far too long to explain here,
+	read the documentation for this). Summarising:
+	- ALL          (all Exif and preamble records)    ref to hash of hashes
+	- IMAGE_DATA   IFD0 + IFD0@SubIFD  (primary image)   ref to hash
+	- THUMB_DATA   IFD1                (thumbnail image) ref to hash
+	- GPS_DATA     IFD0@GPS            (GPS data)        ref to hash
+	- INTEROP_DATA IFD0@SubIFD@Interop (interoperabilty) ref to hash
+	- THUMBNAIL    (the thumbnail data area in APP1)     ref to scalar
+	Tests added. Documentation updated. This approach should be much
+	more user-friendly and looks like the definitive interface I want
+	to use for inquiring Exif data.
+	
+2004-08-04  Stefano Bettelli  <bettelli@localhost>
+
+	* Saved as PRIVATE version 0.10c
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl (set_IPTC_data): corrected
+	a silent bug: when testing for the presence of the RecordVersion
+	tag, don't just check that there is an entry in the hash, but also
+	check that the array pointed to by this hash is not empty.
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl (set_IPTC_data): a new
+	functionality added to the "setter". The $action argument can be:
+	- ADD : new records are added and nothing is deleted; however, if
+	  you try to add a non-repeatable record which is already present,
+	  the newly supplied value replaces the pre-existing value.
+	- UPDATE : new records replace those with the same tags, but the others
+	  are preserved. This makes it possible to modify repeatable records.
+	- REPLACE : all records present in the IPTC subdirectory are deleted
+	  before inserting the new ones.
+	So, 'ADD' and 'REPLACE' are as before, while 'UPDATE' is new and
+	allows for selective replacement of some tags. The default remains
+	'REPLACE'. Documentation updated. Tests added and updated.
+
+2004-08-03  Stefano Bettelli  <bettelli@localhost>
+	
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_app2_ICC_tags):
+ 	updated to reflect the changes in Record::get_size.
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_interop):
+	updated to reflect the changes in Record::get_size.
+
+	* lib/Image/MetaData/JPEG/Segment.pm (create_record): $count means
+	now "length" if the record type is variable-length and the data area
+	is specified through an offset (but I think this never happens).
+
+	* lib/Image/MetaData/JPEG/Record.pm (new): according to the new
+	meaning of "count" in the Record class, the argument $count in the
+	constructor changes like this: if the type is fixed-length, $count
+	is mandatory and must correspond to the number of values to be
+	read from the passed scalar; if the type is variable-length, $count
+	is optional (if specified, it is a counter-check; it must correspond
+	to the size of the passed scalar).
+
+	* lib/Image/MetaData/JPEG/Record.pm: some useless incoherences
+	eliminated (dangerous?): the type length in @JPEG_RECORD_TYPE_LENGTH
+	for non-numeric types (currently ASCII strings, UNDEF strings and
+	Perl references) is set to zero; it is meant with this that the type
+	length is variable, and all sizes should be accepted. This implicitely
+	changes Record::get_size to return 0 also for ASCII and UNDEF.
+	
+2004-08-01  Stefano Bettelli  <bettelli@localhost>
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl: changed JPEG_exif.pl
+	to JPEG_app1_exif.pl, for uniformity with JPEG_app13.pl
+
+	* lib/Image/MetaData/JPEG.pod: re-checked and clarified the part
+	of the documentation concerning IPTC data management, including
+	all previous changes and a note on what is translated when 
+	'TEXTUAL' is on (tags, i.e, keys, not the values).
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl (set_IPTC_data): reworked
+	this method. Added a new logic for $action == 'ADD': old values
+	are merged to new ones; if this leads to the violation of a non
+	repeatability constraint, only the new value is retained (this is
+	done by the new helper function shift_non_repeatables). Added
+	a new logic to make sure that a 'RecordVersion' record is always
+	present. Updated all IPTC tests relevant to 'set'.
+
+	* lib/Image/MetaData/JPEG/Tables.pm: corrected a bug in the 'word',
+	'line' and 'paragraph' regular expression for IPTC data (they were
+	accepting an arbitrary prefix or suffix). Corrected and updated
+	the appropriate tests in t/JPEG_4b_IPTC.t.
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl (get_IPTC_data): do not
+	delete the 'RecordVersion' record from the returned hash. I do
+	not know if this is the right choice, but the previous behaviour
+	was not documented either. Added a test for this.
+
+2004-07-19  Stefano Bettelli  <bettelli@localhost>
+
+	* Saved as PRIVATE version 0.10b
+
+	* lib/Image/MetaData/JPEG.pm (get_segments): the passed regular
+	expression is now changed to "." if undefined or set to the empty
+	string (thus returning all segments or all indexes). I do this
+	because I want to avoid the stupid behaviour of m//:
+	from `man perlop`: if the pattern evaluates to the empty string,
+	the last successfully matched regular expression is used instead;
+	if no match has previously succeeded, this will (silently) act
+	instead as a genuine empty pattern. Added two tests against this.
+	
+	* lib/Image/MetaData/JPEG/JPEG_exif.pl (is_app1_Exif): bug corrected;
+	this was crashing when presented an APP1 segment without a record
+	called 'Identifier' (this happens for XML APP1 segments ....)
+
+2004-07-18  Stefano Bettelli  <bettelli@localhost>
+
+	* t/test_photo.jpg, t/test_photo.desc: reduced the test image size,
+	this cuts down its weight from ~ 200KB to only 33KB.
+	
+	* lib/Image/MetaData/JPEG.pm (save): added binmode for file open
+	calls (it turned out that on Windows it really makes a difference,
+	also when writing). Thanks to Andrea Maestrutti for help with this bug.
+
+	* lib/Image/MetaData/JPEG/Segment.pm (show_directory)
+	(Directory_Banner): added protections against invalid
+	references among function arguments. Mark invalid references.
+
+	* lib/Image/MetaData/JPEG/Segment.pm (get_description): chomp
+	is run only if $this->{error} is defined (avoid error situations).
+
+2004-07-16  Stefano Bettelli  <bettelli@localhost>
+
+	* t/JPEG_1_constructors.t, t/JPEG_2_methods.t: added binmode for
+	file open calls (it turned out that on Windows it really makes a
+	difference!). Thanks to Andrea Maestrutti for help with this bug.
+
+	* t/JPEG_0_records.t: added (it had been left out from the module
+	submitted to CPAN because it was not listed in MANIFEST).
+	
 2004-07-13  Stefano Bettelli  <bettelli@localhost>
 
         * saved current version as Image-MetaData-JPEG-0.10, posted to CPAN
@@ -25,7 +291,7 @@
 	  - the tag is textual or numeric and it is not known;
 	  - the tag is numeric and not in the range 0-255;
 	  - the entry value is an empty array;
-	  - the non-repeteable property is violated;
+	  - the non-repeatable property is violated;
 	  - the tag is marked as invalid;
 	  - the length of a value is invalid;
 	  - a value does not match its mandatory regular expr.
@@ -935,4 +1201,5 @@ Revision history for Perl extension Image::MetaInfo::JPEG.
 ### Local Variables: ***
 ### fill-column:75 ***
 ### ispell-dictionary: "british" ***
+### add-log-mailing-address: "bettelli@cpan.org" ***
 ### End: ***

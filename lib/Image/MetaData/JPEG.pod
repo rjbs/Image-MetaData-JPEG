@@ -77,7 +77,8 @@ and then rewritten to disk.
     2) STRUCTURE OF JPEG PICTURES
     3) STRUCTURE OF A JFIF APP0 SEGMENT
     4) STRUCTURE OF AN EXIF APP1 SEGMENT
-    5) VALID TAGS FOR IPTC DATA
+    5) VALID TAGS FOR EXIF APP1 DATA
+    6) VALID TAGS FOR IPTC DATA
 
 =head2 MANAGING A JPEG STRUCTURE OBJECT
 
@@ -287,7 +288,7 @@ The I<JPEG::Record> class is an internal class for storing parsed
 information about a I<JPEG::Segment>, inspired by Exif records. A Record is
 made up by four fields: I<key>, I<type>, I<values> and I<extra>. The "key"
 is the record's identifier; it is either numeric or textual (numeric keys
-can be translated with the help of the I<%JPEG_RECORD_NAME> lookup table in
+can be translated with the help of the I<%JPEG_lookup> function in
 Tables.pm, included in this package). The "type" is obviously the type of
 stored info (like unsigned integers, ASCII strings and so on ...). "extra"
 is a helper field for storing additional information. Last, "values" is an
@@ -295,7 +296,7 @@ array reference to the record content (almost always there is just one
 value). For instance, for a non-IPTC Photoshop record in APP13:
 
     printf "The numeric key 0x%04x means %s",
-	$record->{key}, $JPEG_RECORD_NAME{APP13}{$record->{key}};
+	$record->{key}, JPEG_lookup('APP13', $record->{key});
     my $values = $record->{values};
     printf "This record contains %d values\n", scalar @$values;
 
@@ -303,12 +304,12 @@ A Record's I<type> can be one among the following predefined constants:
 
 	 0  $NIBBLES    two 4-bit unsigned integers (private)
 	 1  $BYTE       An 8-bit unsigned integer
-	 2  $ASCII      An 8-bit byte for 7-bit ASCII strings
+	 2  $ASCII      A variable length ASCII string
 	 3  $SHORT      A 16-bit unsigned integer
 	 4  $LONG       A 32-bit unsigned integer
 	 5  $RATIONAL   Two LONGs (numerator and denominator)
 	 6  $SBYTE      An 8-bit signed integer
-	 7  $UNDEF      A 8-bit byte which can take any value
+	 7  $UNDEF      A generic variable length string
 	 8  $SSHORT     A 16-bit signed integer
 	 9  $SLONG      A 32-bit signed integer (2's complem.)
 	10  $SRATIONAL  Two SLONGs (numerator and denominator)
@@ -470,8 +471,10 @@ valid APP0 Segment is present.
     * JPEG::retrieve_app1_Exif_segment($index)
     * JPEG::provide_app1_Exif_segment()
     * JPEG::remove_app1_Exif_info($index)
-    * JPEG::get_Exif_data($type)
-    * JPEG::Segment::get_Exif_data($type)
+    * JPEG::get_Exif_data($what, $type)
+    * JPEG::set_Exif_data($data, $what, $action)
+    * JPEG::Segment::get_Exif_data($what, $type)
+    * JPEG::Segment::set_Exif_data($data, $what, $action)
 
 The DCT Exif standard provides photographic meta-data in the APP1 section.
 Various tag-values pairs are stored in groups called IFDs, where each group
@@ -514,32 +517,49 @@ file won't be a valid Exif file after this.
 
     $file->remove_app1_Exif_info(-1);
 
+=head3 How to inspect your EXIF data
+
 Once you have a Segment reference pointing to your favourite Exif Segment,
-you may want to have a look at the records it contains. Use the
-I<get_Exif_data> method for this: its behaviour is controlled by the
-I<$type> argument. It returns a reference to a hash containing a number of
-entries, one for each IFD or subIFD, plus a special root directory
-containing some tags and the links to IFD0 and IFD1. Each such entry is, in
-turn, a hash containing the IFD specific Exif records. The sub-hash keys
-can be numeric tags ($type eq 'NUMERIC') or translated text tags ($type eq
-'TEXTUAL', default); however, entries in the root directories always have
-textual tags. If a numeric tag stored in the JPEG file is unknown, and a
-textual translation is requested, the name of the tag becomes
-"Unknown_tag_$tag". Note that there is no particular check on the validity
-of the Exif records' values: their format is not checked and one or
-multiple values can be attached to a single tag independently of the Exif
-"standard". This is, in some sense, consistent with the fact that also
-"unknown" tags are included in the output.
+you may want to have a look at the records it contains, by using the
+I<get_Exif_data> method: it accepts two arguments (I<$what> and I<$type>)
+and returns the content of the APP1 segment packed in various formats. All
+Exif records are natively identified by numeric tags (keys), which can be
+"translated" into a human-readable form by using the Exif standard docs;
+only a few fields in the Exif APP1 preamble (they are not Exif records) are
+always identified by this module by means of textual tags. The $type
+argument selects the output format for the record keys (tags):
 
-    my $hash_ref = $segment->get_Exif_data("TEXTUAL");
+    * NUMERIC: record tags are native numeric keys
+    * TEXTUAL: record tags are human-readable (default)
 
-$hash_ref is therefore a complicated hash-of-hash structure, which is more
-easily explained by printing one example:
+Of course, record values are never translated. If a numeric Exif tag is not
+known, a custom textual key is created with "Unknown_tag_" followed by its
+numerical value (this solves problems with non-standard tags). The subset
+of Exif tags returned by this method is determined by the value of $what,
+which can be one of:
 
+    'ALL' (default), 'IMAGE_DATA', 'THUMB_DATA', 'GPS_DATA',
+                     'INTEROP_DATA' or 'THUMBNAIL'.
+
+Setting $what equal to 'ALL' returns a reference to a hash of hashes, a
+data structure very close to the Exif APP1 segment structure; in the
+top-level hash there is an entry for each IFD or subIFD, plus a special
+entry (key equal to 'APP1') containing some non Exif parameters. Each entry
+of the top-level hash is a pair ($name, $hashref), where $hashref points to
+a second-level hash containing a copy of all Exif records present in the
+$name IFD (sub)directory. Note that the Exif record values' format is not
+checked to be valid according to the Exif standard. This is, in some sense,
+consistent with the fact that also "unknown" tags are included in the
+output. This complicated structure is more easily explained by showing an
+example (see also the L<VALID TAGS FOR EXIF APP1 DATA> section for details
+on possible records):
+
+    my $hash_ref = $segment->get_Exif_data('ALL', 'TEXTUAL');
+
+			 can give
     $hash_ref = {
            'APP1' => 
-                { 'IFD0_Pointer'            => [ 8              ],
-                  'Signature'               => [ 42             ],
+                { 'Signature'               => [ 42             ],
                   'Endianness'              => [ 'MM'           ],
                   'Identifier'              => [ "Exif\000\000" ],
                   'ThumbnailData'           => [ ... image ...  ], },
@@ -565,22 +585,143 @@ easily explained by printing one example:
                 { 'InteroperabilityVersion' => [ '0100'         ],
                   'InteroperabilityIndex'   => [ "R98\000"      ], }, };
 
+Setting $what equal to '*_DATA' returns a reference to a flat hash,
+corresponding to one or more IFD (sub)dirs:
+
+    'IMAGE_DATA' --> IFD0 + IFD0@SubIFD  (concerning the primary image)
+    'THUMB_DATA' --> IFD1                (concerning the thumbnail image)
+      'GPS_DATA' --> IFD0@GPS            (this contains only GPS data)
+  'INTEROP_DATA' --> IFD0@SubIFD@Interop (seldom used interoperability records)
+
+This interface is simpler for the end-user, because there is only one
+dereferentiation; also, he/she does not need to know the (sub)IFD names or
+to be aware of the partition of records related to the main image into two
+IFDs. With reference to the previous example:
+
+    my $hash_ref = $segment->get_Exif_data('IMAGE_DATA', 'TEXTUAL');
+
+			 gives
+    $hash_ref = {
+           'ResolutionUnit'          => [ 2              ],
+           'JPEGInterchangeFormatLength' => [ 3922       ],
+           'JPEGInterchangeFormat'   => [ 2204           ],
+           'Orientation'             => [ 1              ],
+           'XResolution'             => [ 72, 1          ],
+           'Compression'             => [ 6              ],
+           'YResolution'             => [ 72, 1          ],
+           'ApertureValue'           => [ 35, 10         ],
+           'PixelXDimension'         => [ 2160           ],
+              etc., etc. ....
+           'ExifVersion'             => [ '0210'         ], };
+
+Last, setting $what to 'THUMBNAIL' returns a reference to a copy of the
+actual Exif thumbnail image (this is not included in the set returned by
+'THUMB_DATA'). Note that the pointed scalar is not very small (~ 10^1 KB).
+If the thumbnail is in JPEG format (this corresponds to the 'Compression'
+property, in IFD1, set to 6), you can create another JPEG picture object
+from it, like in the following example:
+
+    my $data_ref = $segment->get_Exif_data('THUMBNAIL');
+    my $thumb = new Image::MetaData::JPEG($data_ref);
+    print $thumb->get_description();
+
 If you are only interested in reading Exif data in a I<standard>
-configuration, you can skip most of the previous calls and use directly
+configuration, you can skip the segment-search calls and use directly
 I<JPEG::get_Exif_data> (note that this is a method of the JPEG class, so
 you need a JPEG structure object only). This method is a generalisation of
 the method with the same name in the Segment class. First, all Exif APP1
 segment are retrieved (if none is present, the undefined value is
 returned). Then, get_Exif_data is called on each of these segments, passing
-the argument ($type) through. The results are then merged in a single
-hash. A snippet of code for visualising Exif data looks like this:
+the arguments through. The results are then merged and returned to the
+user. A snippet of code for visualising Exif data looks like this:
 
-    while (my ($d, $h) = each %$hash_ref) { 
+    my $hash_ref = $image->get_Exif_data('ALL');
+    while (my ($d, $h) = each %$hash_ref) {
       while (my ($t, $a) = each %$h) {
 	printf "%-25s\t%-25s\t-> ", $d, $t;
 	s/([\000-\037\177-\377])/sprintf "\\%02x",ord($1)/ge,
 	$_ = (length $_ > 30) ? (substr($_,0,30) . " ... ") : $_,
 	printf "%-5s", $_ for @$a; print "\n"; } }
+
+=head3 How to modify your EXIF data
+
+The APP1 Exif structure is quite complicated, and the number of different
+possible cases when trying to modify it is very large; therefore, designing
+a clean and intuitive interface for this task is not trivial. The following
+method calls are a proposal open to discussion with the end user (if he/she
+can find a cleaner interface with an acceptable cost for the developer...).
+Similarly to the "getter" case, there is a I<set_Exif_data> method callable
+from a picture object, which does nothing more than looking for the first
+Exif APP1 segment (creating it, if there is none) and invoke the method
+with the same name in the Segment class, passing its arguments through.
+So, the remaining of this section will concentrate on the Segment method.
+Let us discuss the guidelines for the Exif setter method(s).
+
+Exif records are usually characterised by a numeric key (a I<tag>); this
+was already discussed in the "getter" section. Since these keys, for valid
+records, can be translated from numeric to textual form and back, the end
+user has the freedom to use whichever form better fits his needs. The two
+forms can even be mixed in the same "setter" call: the method will take
+care to translate textual tags to numeric tags when possible, and reject
+the others; then, it will proceed as if all tags were numeric from the very
+beginning. Records with unknown textual or numeric tags are always rejected.
+
+The arguments to I<set_Exif_data> are $data, $what and $action. The
+I<$data> argument must be a hash reference to a flat hash, containing the
+key - record values pairs supplied by the user. The "value" part of each
+hash element can be an array reference (containing a list of values for the
+record, remember that some records are multi-valued) or a single scalar
+(this is internally converted to a reference to an array containing only
+the supplied scalar). If a record value is supposed to be a null terminated
+string, the user can supply a Perl scalar without the final null character
+(it will be inserted automatically).
+
+The I<$what> argument must be a scalar, and it selects the portion of the
+Exif APP1 segment concerned by the I<set_Exif_data> call. So, obviously,
+the end user can modify only one section at a time; this is a
+simplification (for the developer of course) but also for the end user,
+because trying to set all Exif-like values in one go would require an
+offensively complicated data structure to specify the destination of each
+record (note that some records in different sections can have the same
+numerical tag, so a plain hash would not trivially work). Valid values for
+$what are:
+
+    'GPS_DATA'    --> modifies the GPS subIFD in the 0th IFD
+    .... to be completed ....
+
+The I<$action> argument controls whether the setter adds ($action = 'ADD')
+records to a given data directory or replaces ($action = 'REPLACE') them.
+In the first case, each user-supplied record replaces the existing version
+of that record if present, and simply inserts the record if it was not
+already present; however, existing records with no counterpart in the user
+supplied $data hash remain untouched. In the second case, the record
+directory is cleared before inserting user data. Note that, since Exif and
+Exif-like records are non-repeatable in nature, there is no need of an
+'UPDATE' action, like for IPTC (see L<IPTC DATA (from "APP13" segments)>).
+
+The I<set_Exif_data> routine runs some preventive checks on user input,
+then it passes the control to a specialised method, depending on $what.
+The checks performed for every $what are: the concerned segment must be of
+the appropriate type (Exif APP1), $data must be a hash reference, $action
+and $what must be valid. If $action is undefined, it defaults to 'REPLACE'.
+
+The return value of the setter routine is always a hash reference; in
+general it contains records rejected by the specialised routines. If an
+error occurs in a very early stage of the setter, this reference contains a
+single entry with key='ERROR' and value set to some meaningful error
+message. So, returning a reference to an empty hash means that everything
+was OK.
+
+The specialised setter for GPS data, selected by $action = I<'GPS_DATA'>,
+uses the specifications described in the L<EXIF tags for the 0th IFD GPS
+directory> section in the appendixes. It creates a GPS record subdirectory
+if it is not present, so you can call it also on GPS-less files. A
+GPSVersionID is forced, if it is not present at the end of the process,
+because it is mandatory (ver 2.2 is chosen). Records are rewritten to the
+GPS subdirectory in increasing (numerical) tag order. Note that there are
+some record inter-correlations which are still neglected here (for instance,
+the 'GPSAltitude' record can be inserted without providing the
+corresponding 'GPSAltitudeRef' record).
 
 =head2 IPTC DATA (from "APP13" segments)
 
@@ -633,15 +774,18 @@ Once you have a Segment reference pointing to your favourite IPTC Segment,
 you may want to have a look at the records it contains. Use the
 I<get_IPTC_data> method for this: its behaviour is controlled by the
 I<$type> argument. It returns a reference to a hash containing a copy of
-the list of IPTC records in the selected Segment, if present; the hash keys
-can be numeric tags ($type eq 'NUMERIC') or translated text tags ($type eq
-'TEXTUAL', default). If a numeric tag stored in the JPEG file is unknown,
-and a textual translation is requested, the name of the tag becomes
-"Unknown_tag_$tag". Note that there is no particular check on the validity
-of the IPTC records' values: their format is not checked and one or
-multiple values can be attached to a single tag independently of the IPTC
-"standard". This is, in some sense, consistent with the fact that also
-"unknown" tags are included in the output.
+the list of IPTC records in the selected Segment, if present, undef
+otherwise: each element of the hash is a pair (key, arrayref), where
+arrayref points to an array with the real IPTC values (some IPTC records
+are repeatable, so multiple values are allowed). The record keys can be the
+native numeric keys ($type eq 'NUMERIC') or translated textual keys ($type
+eq 'TEXTUAL', default); in any case, the record values are untranslated. If
+a numeric key stored in the JPEG file is unknown, and a textual translation
+is requested, the name of the key becomes "Unknown_tag_$tag". Note that
+there is no check on the validity of the IPTC records' values: their format
+is not checked and one or multiple values can be attached to a single tag
+independently of the IPTC repeatability. This is, in some sense, consistent
+with the fact that also "unknown" tags are included in the output.
 
     my $hash_ref = $segment->get_IPTC_data("TEXTUAL");
 
@@ -653,24 +797,36 @@ An example of a possible output from this call is the following:
                   'OriginatingProgram' => [ 'Mapivi' ] };
 
 The hash returned by get_IPTC_data can be edited and reinserted with the
-I<set_IPTC_data> method, whose arguments are I<$data> and I<$action>.  This
+I<set_IPTC_data> method, whose arguments are I<$data> and I<$action>. This
 method accepts IPTC data in various formats and updates the IPTC
 subdirectory in the segment. The key type of each entry in the input hash
 can be numeric or textual, independently of the others (the same key can
-appear in both forms, the corresponding values will be appended). The value
-of each entry can be an array reference or a scalar (you can use this as a
-shortcut for value arrays with only one value). The $action argument can be
-'ADD' or 'REPLACE', and it discriminates weather the passed data must be
-added to or must replace the current datasets in the IPTC subdir. The
-return value is a reference to a hash containing the rejected key-values
-entries. The entries of %$data are not modified. An entry in the %$data
-hash can be rejected for various reasons (you might want to have a look at
-appendix L<VALID TAGS FOR IPTC DATA> for further information): a) the tag
-is textual or numeric and it is not known; b) the tag is numeric and not in
-the range 0-255; c) the entry value is an empty array; d) the
-non-repeatable property is violated; e) the tag is marked as invalid; f)
-the length of a value is invalid; g) a value does not match its mandatory
-regular expression.
+appear in both forms, the corresponding values will be put together). The
+value of each entry can be an array reference or a scalar (you can use this
+as a shortcut for value arrays with only one value). The $action argument
+can be:
+
+   - ADD : new records are added and nothing is deleted; however, if you
+	   try to add a non-repeatable record which is already present,
+	   the newly supplied value replaces the pre-existing value.
+   - UPDATE : new records replace those characterised by the same tags,
+           but the others are preserved. This makes it possible to modify
+           some repeatable records without deleting the other tags.
+   - REPLACE : all records present in the IPTC subdirectory are deleted
+           before inserting the new ones (this is the default action).
+
+If, after implementing the changes required by $action, the 'RecordVersion'
+record (dataset 0) is still undefined, it is added (with version = 2),
+because it is mandatory according to the IPTC standard. The return value is
+a reference to a hash containing the rejected key-values entries. The
+entries of %$data are not modified. An entry in the %$data hash can be
+rejected for various reasons (you might want to have a look at appendix
+L<VALID TAGS FOR IPTC DATA> for further information): a) the tag is textual
+or numeric and it is not known; b) the tag is numeric and not in the range
+0-255; c) the entry value is an empty array; d) the non-repeatability
+constraint is violated; e) the tag is marked as invalid; f) the length of a
+value is invalid; g) a value does not match its mandatory regular
+expression.
 
     $segment->set_IPTC_data($additional_data, "ADD");
 
@@ -691,13 +847,15 @@ you need a JPEG structure object only). This method is a generalisation of
 the method with the same name in the Segment class. First, all IPTC APP13
 segment are retrieved (if none is present, the undefined value is
 returned). Then, get_IPTC_data is called on each of these segments, passing
-the argument ($type) through. The results are then merged in a single
-hash. A snippet of code for visualising IPTC data looks like this:
+the argument ($type) through. The results are then merged in a single hash
+(most JPEG files with IPTC data contain at most one APP13 segment however,
+so this merging is very unlikely to occur). A snippet of code for
+visualising IPTC data looks like this:
 
     my $hashref = $file->get_IPTC_data("TEXTUAL");
-    while (my ($tag, $vals) = each %$hashref) {
+    while (my ($tag, $val_arrayref) = each %$hashref) {
     	printf "%25s --> ", $tag;
-    	print "$_ " for @$vals; print "\n"; }
+    	print "$_ " for @$val_arrayref; print "\n"; }
 
 There is, of course, a symmetric I<JPEG::set_IPTC_data> method, which
 writes IPTC data to the JPEG object without asking the user to bother about
@@ -705,7 +863,7 @@ Segments. If there is no IPTC enabled APP13 Segment, a new Segment is
 created and initialised (because this uses provide_app13_IPTC_segment()
 internally, and not retrieve_app13_ ... as JPEG::get_IPTC_data).
 
-    $file->set_IPTC_data($hashref, "ADD");
+    $file->set_IPTC_data($hashref, "UPDATE");
 
 =head2 CURRENT STATUS
 
@@ -717,7 +875,7 @@ Segments (only APP and COM Segments).
 
     * COM    User comments              parse/read/write
     * APP0   JFIF data (+ thumbnail)    parse/read
-    * APP1   Exif or XMP data           parse/read[Exif]
+    * APP1   Exif or XMP data           parse/read[Exif]/write[GPS]
     * APP2   FPXR data or ICC profiles  parse
     * APP3   additional EXIF-like data  parse
     * APP4   HPSC                       nothing
@@ -731,13 +889,13 @@ I<USE WITH CAUTION! THIS IS EXPERIMENTAL SOFTWARE!>
 
 This module is still I<experimental>, and not yet finished. In particular,
 it is far from being well tested. The interface for getting/setting IPTC
-and Exif data is still under evaluation, and could be changed in the
-future; the "set" routines for Exif data are not yet ready. Parsing of
-I<maker notes> in the Exif section is not yet implemented. APP13 data
-spanning I<multiple Segments> is not correctly read/written. I<Floating
-point> types for Exif records are not implemented yet. Most of APP12
-Segments do not fit the structure parsed by parse_app12(), probably there
-is some standard I don't know.
+and Exif data is still under intense development, and could be changed in
+the future; the "set" routines for Exif data, exception made for GPS data,
+are not yet ready. Parsing of I<maker notes> in the Exif section is not yet
+implemented. APP13 data spanning I<multiple Segments> is not correctly
+read/written. I<Floating point> types for Exif records are not implemented
+yet. Most of APP12 Segments do not fit the structure parsed by
+parse_app12(), probably there is some standard I don't know.
 
 =head1 OTHER PACKAGES
 
@@ -1006,10 +1164,10 @@ followed by thumbnail data. The structure is as follows:
 
     [Record name]    [size]   [description]
     ---------------------------------------
-    Identifier       6 bytes   ("Exif\000\000" = 0x457869660000)
+    Identifier       6 bytes   ("Exif\000\000" = 0x457869660000), not stored
     Endianness       2 bytes   'II' (little endian) or 'MM' (big endian)
     Signature        2 bytes   a fixed value = 42
-    IFD0_Pointer     4 bytes   offset of 0th IFD (usually 8)
+    IFD0_Pointer     4 bytes   offset of 0th IFD (usually 8), not stored
     IFD0                ...    main image IFD
     IFD0@SubIFD         ...    EXIF private tags (optional, linked by IFD0)
     IFD0@SubIFD@Interop ...    Interoperability IFD (optional,linked by SubIFD)
@@ -1032,7 +1190,7 @@ If the thumbnail is present it is located after the 1st IFD. There are 3
 possible formats: JPEG (only this is compressed), RGB TIFF, and YCbCr TIFF.
 It seems that JPEG and 160x120 pixels are recommended for Exif ver. 2.1 or
 higher (mandatory for DCF files). Since the segment size for a segment is
-recorded in 2 bytes, thumbnails are limited to 64KB minus something.
+recorded in 2 bytes, thumbnails are limited to slightly less than 64KB.
 
 Each IFD block is a structured sequence of records, called, in the Exif
 jargon, I<Interoperability arrays>. The beginning of the 0th IFD is given
@@ -1047,7 +1205,7 @@ by the 'IFD0_Pointer' value. The structure of an IFD is the following:
 
 The next_link field of the 0th IFD, if non-null, points to the beginning of
 the 1st IFD. The 1st IFD as well as all other sub-IFDs must have next_link
-fixed to zero. The thumbnail location and size is given by some
+set to zero. The thumbnail location and size is given by some
 interoperability arrays in the 1st IFD. The structure of an
 Interoperability array is:
 
@@ -1066,10 +1224,457 @@ array gets stored as a Record with given tag, type, count and values. The
 value is recorded. It contains the actual value if it is not larger than 4
 bytes (32 bits). If the value is shorter than 4 bytes, it is recorded in
 the lower end of the 4-byte area (smaller offsets). For further details see
+the section L<VALID TAGS FOR EXIF APP1 DATA>.
+
+=head2 VALID TAGS FOR EXIF APP1 DATA
+
+The Japan Electronics and Information Technology Industries Association
+(JEITA) set up a standard for an exchange format for digital still cameras
+pictures, known as EXIF. This standard defines a structure for embedding
+meta-data in a JPEG picture, to be written in the APP1 segment. The
+generalities about this structure are shown in the section L<STRUCTURE OF
+AN EXIF APP1 SEGMENT>; this section and its subsections list the valid
+interoperability record tags as well as their format. The reference
+document for this standard is:
 
     "Exchangeable image file format for digital still cameras:
      Exif Version 2.2", JEITA CP-3451, Apr 2002 
     Japan Electronic Industry Development Association (JEIDA)
+
+  The TIFF standard documents are also useful:
+    - "TIFF(TM) Revision 6.0, Final", June 3, 1992, Adobe Devel. Association
+    - ISO 12639, "Graphic technology -- Prepress digital data exchange
+	  -- Tag image file format for image  technology (TIFF/IT)"
+    - ISO 12234-2, "Electronic still-picture imaging -- Removable memory
+	  -- Part 2: TIFF/EP image data format"
+  as well as some updates and corrections:
+    - DRAFT - TIFF CLASS F, October 1, 1991
+    - DRAFT - TIFF Technical Note #2, 17-Mar-95 (updates for JPEG-in-TIFF)
+    - "Adobe Pagemaker 6.0 TIFF Technical Notes", September 14, 1995
+
+=head3 VALID TAGS FOR IFD0 AND IFD1
+
+In general, IFD0 and IFD1 can host tags from the same set. These tags are
+divided in three categories: canonical, additional and registered to
+companies.
+
+=head4 Canonical Exif 2.2 and TIFF 6.0 tags for IFD0 and IFD1
+
+The tags listed in the following table are to be considered canonical; they
+are described at length in the EXIF standard document, and can be found
+both in the IFD0 and in the IFD1 (some of them, in fact, must be present in
+both directories). The 'class' column carries the tag class; possible
+values are: A (image data structure), B (offsets), C (image data
+characteristics), D (other tags) and P (pointers to other IFDs). The two
+following columns show tag hexadecimal codes and names. The 'type' column
+specifies the (always unsigned) tag type: I (short or long), S (short), L
+(long), R (rational) and A (ASCII, always null terminated). The 'count'
+column obviously carries the tag count ('-' that it is variable, either
+because it is a variable length string or because it depends on other
+tags).
+
+The 'IFD0' and 'IFD1' columns specify the support level in the respective
+directory; each column comprises four letters, because both the primary
+image (IFD0) and the thumbnail (IFD1) can come in four varieties
+(uncompressed chunky, uncompressed planar, uncompressed YCC and JPEG
+compressed). This module currently focuses only on JPEG pictures (not
+TIFF), so only the fourth letter of the 'IFD0' column is interesting, but
+note that the thumbnail of a JPEG image can be uncompressed. The support
+level codes stand for: M (mandatory), R (recommended), O (optional), N
+(not_recorded) and J (included in JPEG marker and so not recorded).
+
+So, some of these tags (marked by '***' in the notes) are supposed to be
+present, in a JPEG image, only for uncompressed thumbnails in IFD1 (two of
+them only for specific types of uncompressed data). Moreover, some tags
+must not be set by the module user, since they concern offsets and data
+types (which are calculated automatically, more reliably): these are marked
+by 'calculated' in the notes.
+
+     Hexadecimal code                count   IFD0 IFD1 notes
+  class |  Tag name                 type |   |    |    |
+  |     |  |                           | |   |    |    |
+  A   100  ImageWidth                  I 1   MMMJ MMMJ ***
+  A   101  ImageLength                 I 1   MMMJ MMMJ ***
+  A   102  BitsPerSample               S 3   MMMJ MMMJ ***
+  A   103  Compression                 S 1   MMMJ MMMM calculated
+  A   106  PhotometricInterpretation   S 1   MMMN MMMJ *** (2 or 6)
+  D   10e  ImageDescription            A -   RRRR OOOO pure ASCII
+  D   10f  Make                        A -   RRRR OOOO camera maker
+  D   110  Model                       A -   RRRR OOOO camera model
+  B   111  StripOffsets                I -   MMMN MMMN ***
+  A   112  Orientation                 S 1   RRRR OOOO 1-8
+  A   115  SamplesPerPixel             S 1   MMMJ MMMJ ***
+  B   116  RowsPerStrip                I 1   MMMN MMMN ***
+  B   117  StripByteCounts             I -   MMMN MMMN ***
+  A   11a  XResolution                 R 1   MMMM MMMM [72 default]
+  A   11b  YResolution                 R 1   MMMM MMMM [72 default]
+  A   11c  PlanarConfiguration         S 1   OMOJ OMOJ *** (1 or 2)
+  A   128  ResolutionUnit              S 1   MMMM MMMM (2 or 3)
+  C   12d  TransferFunction            S 768 RRRR OOOO .
+  D   131  Software                    A -   OOOO OOOO .
+  D   132  DateTime                    A 20  RRRR OOOO YYYY:MM:DD HH:MM:SS
+  D   13b  Artist                      A -   OOOO OOOO .
+  C   13e  WhitePoint                  R 2   OOOO OOOO .
+  C   13f  PrimaryChromaticities       R 6   OOOO OOOO .
+  B   201  JPEGInterchangeFormat       L 1   NNNN NNNM calculated, in IFD1
+  B   202  JPEGInterchangeFormatLength L 1   NNNN NNNM calculated, in IFD1
+  C   211  YCbCrCoefficients           R 3   NNOO NNOO .
+  A   212  YCbCrSubSampling            S 2   NNMJ NNMJ *** ([2,1] or [2,2])
+  A   213  YCbCrPositioning            S 1   NNMM NNOO (1 or 2)
+  C   214  ReferenceBlackWhite         R 6   OOOO OOOO .
+  D  8298  Copyright                   A -   OOOO OOOO null terminated
+  P  8769  ExifOffset                  L 1   MMMM OOOO calculated
+  P  8825  GPSInfo                     L 1   OOOO OOOO calculated
+
+=head4 Additional TIFF 6.0 tags not in Exif 2.2 for IFD0
+
+The tags listed in the following table are present in the TIFF 6.0 standard
+and not in the Exif 2.2 standard. They are presented here just for
+reference, since some digital cameras or programs still include them,
+incorrectly, in the IFD0 (they are not present in IFD1, I assume). The
+'class' column carries the tag class; possible values are: a (TIFF 6.0 tags
+for baseline TIFFs not in Exif 2.2), b (extensions to TIFF 6.0 specs not in
+Exif 2.2) and '-' (updates and corrections to TIFF 6.0). The two following
+columns show tag hexadecimal codes and names. The 'type' column specifies
+the (always unsigned) tag type: i (byte or short), I (short or long), B
+(byte), S (short), L (long), R (rational), D (doubleword), '-'
+(unspecified, best fit) and A (ASCII, always null terminated). The 'count'
+column obviously carries the tag count ('-' that it is variable, either
+because it is a variable length string or because it depends on other
+tags).
+
+     Hexadecimal code                count  notes
+  class |  Tag name                 type |  |
+  |     |  |                           | |  |
+  a    fe  NewSubfileType              L 1  TIFFs can hold multiple images
+  a    ff  SubFileType                 S 1  TIFFs can hold multiple images
+  a   107  Thresholding                S 1  for Graylevel to Black&White
+  a   108  CellWidth                   S 1  halftoning matrix support
+  a   109  CellLength                  S 1  halftoning matrix support
+  a   10a  FillOrder                   S 1  bits' logical order in a byte
+  b   10d  DocumentName                A -  document storage and retrieval
+  a   118  MinSampleValue              S -  only for statistical purposes
+  a   119  MaxSampleValue              S -  only for statistical purposes
+  b   11d  PageName                    A -  document storage and retrieval
+  b   11e  XPosition                   R 1  document storage and retrieval
+  b   11f  YPosition                   R 1  document storage and retrieval
+  a   120  FreeOffsets                 L -  not recommended for interchange
+  a   121  FreeByteCounts              L -  not recommended for interchange
+  a   122  GrayResponseUnit            S 1  for grayscale images
+  a   123  GrayResponseCurve           S -  for grayscale images
+  b   124  T4Options                   L 1  (group 3 options)
+  b   125  T6Options                   L 1  (group 4 options)
+  b   129  PageNumber                  S 2  document storage and retrieval
+  -   12c  ColorResponseUnit           S 1  [obsoleted in TIFF 6.0]
+  a   13c  HostComputer                A -  computer/OS used for creation
+  b   13d  Predictor                   S 1  differencing predictor
+  a   140  Colormap                    S -  RGB colour map
+  b   141  HalftoneHints               S 2  half tone hints
+  b   142  TileWidth                   I 1  tiled images
+  b   143  TileLength                  I 1  tiled images
+  b   144  TileOffsets                 L -  tiled images
+  b   145  TileByteCounts              I -  tiled images
+  -   146  BadFaxLines                 I 1  [TIFF class F draft]
+  -   147  CleanFaxData                S 1  [TIFF class F draft]
+  -   148  ConsecutiveBadFaxLines      I 1  [TIFF class F draft]
+  -   14a  SubIFDs                     L -  [Adobe TIFF technote 1]
+  b   14c  InkSet                      S 1  CMYK images
+  b   14d  InkNames                    A -  CMYK images
+  b   14e  NumberOfInks                S 1  CMYK images
+  b   150  DotRange                    i -  CMYK images
+  b   151  TargetPrinter               A -  CMYK images
+  a   152  ExtraSamples                S -  pixel extra components
+  b   153  SampleFormats               S -  data sample format
+  b   154  SMinSampleValue             - -  data sample format
+  b   155  SMaxSampleValue             - -  data sample format
+  b   156  TransferRange               S 6  image colourimetry
+  -   157  ClipPath                    B -  [Adobe TIFF technote 2]
+  -   158  XClipPathUnits              D 1  [Adobe TIFF technote 2]
+  -   159  YClipPathUnits              D 1  [Adobe TIFF technote 2]
+  -   15a  Indexed                     S 1  [Adobe TIFF technote 3]
+  -   15b  JPEGTables                  - -  [update (1995) for JPEG-in-TIFF]
+  -   15f  OPIProxy                    S 1  [Adobe TIFF technote (OPI)]
+  b   200  JPEGProc                    S 1  JPEG support
+  b   203  JPEGRestartInterval         S 1  JPEG support
+  b   205  JPEGLosslessPredictors      S -  JPEG support
+  b   206  JPEGPointTransforms         S -  JPEG support
+  b   207  JPEGQTables                 L -  JPEG support
+  b   208  JPEGDCTables                L -  JPEG support
+  b   209  JPEGACTables                L -  JPEG support
+  -   2bc  XML_Packet                  B -  [Adobe XMP technote 9-14-02]
+
+=head4 EXIF tags assigned to companies for IFD0 and IFD1
+
+The tags listed in the following table, all larger than 0x8000, i.e. 32000,
+were requested by individual companies and assigned to them by the TIFF
+committee; well, at least I think, because it is very difficult to have an
+official list for these tags, so that they should be considered at the
+level of "rumours". This list also includes some TIFF/IT tags from ISO 12639
+and some TIFF/EP tags from ISO 12234 (private Exif tags in JPEG APP1
+originated from TIFF/EP, so there is a large intersection: TIFF/EP tags
+which are also Exif are not listed here).
+
+  Hexadecimal code                count  notes
+     |  Tag name                 type |  |
+     |  |                           | |  |
+  800d  ImageID                     A -  [Adobe TIFF technote            (OPI)]
+  80b9  RefPts                      ? ?  [Island Graphics                     ]
+  80ba  RegionTackPoint             ? ?  [Island Graphics                     ]
+  80bb  RegionWarpCorners           ? ?  [Island Graphics                     ]
+  80bc  RegionAffine                ? ?  [Island Graphics                     ]
+  80e3  Matteing                    S 1  [SGI      (obsoleted by ExtraSamples)]
+  80e4  DataType                    S -  [SGI      (obsoleted by SampleFormat)]
+  80e5  ImageDepth                  I 1  [SGI                    (z dimension)]
+  80e6  TileDepth                   I 1  [SGI               (subvolume tiling)]
+  8214  ImageFullWidth              L 1  [Pixar               (cropped images)]
+  8215  ImageFullLength             L 1  [Pixar               (cropped images)]
+  8216  TextureFormat               A -  [Pixar              (texture formats)]
+  8217  WrapModes                   A -  [Pixar              (texture formats)]
+  8218  FovCot                      F 1  [Pixar              (texture formats)]
+  8219  MatrixWorldToScreen         F 16 [Pixar              (texture formats)]
+  821a  MatrixWorldToCamera         F 16 [Pixar              (texture formats)]
+  827d  WriterSerialNumber          ? ?  [Eastman Kodak (device serial number)]
+  828d  CFARepeatPatternDim         S 2  [             ISO/DIS 12234-2 TIFF/EP]
+  828e  CFAPattern                  B -  [             ISO/DIS 12234-2 TIFF/EP]
+  828f  BatteryLevel               RA 1- [             ISO/DIS 12234-2 TIFF/EP]
+  830e  ModelPixelScaleTag          D 3  [SoftDesk                   (GeoTIFF)]
+  83bb  IPTC/NAA                   LA -  [             ISO/DIS 12234-2 TIFF/EP]
+  8480  IntergraphMatrixTag         D 16 [Intergraph, deprecated     (GeoTIFF)]
+  8482  ModelTiepointTag            D -  [Intergraph, aka Georef.Tag (GeoTIFF)]
+  84e0  Site                        A -  [               ISO/DIS 12639 TIFF/IT]
+  84e1  ColorSequence               A -  [               ISO/DIS 12639 TIFF/IT]
+  84e2  IT8Header                   A -  [               ISO/DIS 12639 TIFF/IT]
+  84e3  RasterPadding               S 1  [               ISO/DIS 12639 TIFF/IT]
+  84e4  BitsPerRunLength            S 1  [               ISO/DIS 12639 TIFF/IT]
+  84e5  BitsPerExtendedRunLength    S 1  [               ISO/DIS 12639 TIFF/IT]
+  84e6  ColorTable                  B -  [               ISO/DIS 12639 TIFF/IT]
+  84e7  ImageColorIndicator         B 1  [               ISO/DIS 12639 TIFF/IT]
+  84e8  BackgroundColorIndicator    B 1  [               ISO/DIS 12639 TIFF/IT]
+  84e9  ImageColorValue             B 1  [               ISO/DIS 12639 TIFF/IT]
+  84ea  BackgroundColorValue        B 1  [               ISO/DIS 12639 TIFF/IT]
+  84eb  PixelIntensityRange         B 2  [               ISO/DIS 12639 TIFF/IT]
+  84ec  TransparencyIndicator       B 1  [               ISO/DIS 12639 TIFF/IT]
+  84ed  ColorCharacterization       A -  [               ISO/DIS 12639 TIFF/IT]
+  84ee  HCUsage                     L 1  [               ISO/DIS 12639 TIFF/IT]
+  84ef  TrapIndicator               B 1  [               ISO/DIS 12639 TIFF/IT]
+  84f0  CMYKEquivalent              i -  [               ISO/DIS 12639 TIFF/IT]
+  84f1  Reserved_TIFF_IT_1          - -  [               ISO/DIS 12639 TIFF/IT]
+  84f2  Reserved_TIFF_IT_2          - -  [               ISO/DIS 12639 TIFF/IT]
+  84f3  Reserved_TIFF_IT_3          - -  [               ISO/DIS 12639 TIFF/IT]
+  85b8  FrameCount                  L 1  [Texas Instruments   (Sequence Count)]
+  85d8  ModelTransformationTag      D 16 [JPL Cartogr. App. Group    (GeoTIFF)]
+  8649  PhotoshopImageResources     B ?  [Adobe                    (Photoshop)]
+  8773  ICCProfile                  - -  [Inter Colour Consortium    (TIFF/IT)]
+  87af  GeoKeyDirectoryTag          S -  [SPOT Image Inc.            (GeoTIFF)]
+  87b0  GeoDoubleParamsTag          D -  [SPOT Image Inc.            (GeoTIFF)]
+  87b1  GeoAsciiParamsTag           A -  [SPOT Image Inc.            (GeoTIFF)]
+  87be  JBIGOptions                 ? ?  [Pixel Magic                         ]
+  8829  Interlace                   S 1  [             ISO/DIS 12234-2 TIFF/EP]
+  882a  TimeZoneOffset             SS -  [             ISO/DIS 12234-2 TIFF/EP]
+  882b  SelfTimerMode               S 1  [             ISO/DIS 12234-2 TIFF/EP]
+  885c  FaxRecvParams               L 1  [SGI                    (fax support)]
+  885d  FaxSubAddress               A -  [SGI                    (fax support)]
+  885e  FaxRecvTime                 L 1  [SGI                    (fax support)]
+  8871  FedExEDR                    ? ?  [FedEx                               ]
+  920b  FlashEnergy                 R -  [             ISO/DIS 12234-2 TIFF/EP]
+  920c  SpatialFrequencyResponse    - -  [             ISO/DIS 12234-2 TIFF/EP]
+  920d  Noise                       - -  [             ISO/DIS 12234-2 TIFF/EP]
+  920e  FocalPlaneXResolution       R 1  [             ISO/DIS 12234-2 TIFF/EP]
+  920f  FocalPlaneYResolution       R 1  [             ISO/DIS 12234-2 TIFF/EP]
+  9210  FocalPlaneResolutionUnit    S 1  [             ISO/DIS 12234-2 TIFF/EP]
+  9211  ImageNumber                 L 1  [             ISO/DIS 12234-2 TIFF/EP]
+  9212  SecurityClassification      A -  [             ISO/DIS 12234-2 TIFF/EP]
+  9213  ImageHistory                A -  [             ISO/DIS 12234-2 TIFF/EP]
+  9215  ExposureIndex               R -  [             ISO/DIS 12234-2 TIFF/EP]
+  9216  TIFF/EPStandardID           B 4  [             ISO/DIS 12234-2 TIFF/EP]
+  9217  SensingMethod               S 1  [             ISO/DIS 12234-2 TIFF/EP]
+  923f  StoNits                     D 1  [SGI                (LogLuv Encoding)]
+  935c  ImageSourceData             - -  [Adobe Photoshop                     ]
+  c4a5  PrintIM_Data                ? ?  [Epson                               ]
+  c44f  PhotoshopAnnotations        ? ?  [Adobe Photoshop                     ]
+  ffff  DCSHueShiftValues           ? ?  [Eastman Kodak                       ]
+
+=head4 EXIF tags for the 0th IFD Exif Private Tags
+
+The tags listed in the following table are all the Exif 2.2 private tags
+(i.e., those which populate the 0th IFD SubIFD); they are described at
+length in the EXIF standard document. The 'class' column carries the tag
+class; possible values are: a (tags relating to version), b (image data
+characteristics), c (image configuration), d (user information), e (related
+file information), f (date and time), g (picture taking conditions) and h
+(other Exif 2.2 tags). The two following columns show tag hexadecimal codes
+and names. The 'type' column specifies the tag type: I (short or long), S
+(short), L (long), R (rational), SR (signed rational), U (undefined) and A
+(ASCII, always null terminated). The 'count' column obviously carries the
+tag count ('-' that it is variable, either because it is a variable length
+string or because it depends on other tags).
+
+The 'SubIFD' column specifies the support level; it comprises four letters,
+because the primary image (IFD0) can come in four varieties (uncompressed
+chunky, uncompressed planar, uncompressed YCC and JPEG compressed). This
+module currently focuses only on JPEG pictures (not TIFF), so only the
+fourth letter is interesting. The support level codes stand for: M
+(mandatory), R (recommended), O (optional), and N (not_recorded). Tags
+marked as 'calculated' in the notes must not be set by the module user,
+since they concern offsets and data types (which are calculated
+automatically, more reliably).
+
+     Hexadecimal code                count SubIFD notes
+  class |  Tag name                 type |   |    |
+  |     |  |                           | |   |    |
+  g  829a  ExposureTime                R 1   RRRR 
+  g  829d  FNumber                     R 1   OOOO 
+  g  8822  ExposureProgram             S 1   OOOO valid values are 0-8
+  g  8824  SpectralSensitivity         A -   OOOO see ASTM technical committee
+  g  8827  ISOSpeedRatings             S -   OOOO see ISO 12232
+  g  8828  OECF                        U -   OOOO see ISO 14524
+  a  9000  ExifVersion                 U 4   MMMM '0220' for version 2.2
+  f  9003  DateTimeOriginal            A 20  OOOO YYYY:MM:DD HH:MM:SS
+  f  9004  DateTimeDigitized           A 20  OOOO YYYY:MM:DD HH:MM:SS
+  c  9101  ComponentsConfiguration     U 4   NNNM valid values are '0'..'6'
+  c  9102  CompressedBitsPerPixel      R 1   NNNO
+  g  9201  ShutterSpeedValue          SR 1   OOOO unit is the APEX setting
+  g  9202  ApertureValue               R 1   OOOO unit is the APEX value
+  g  9203  BrightnessValue            SR 1   OOOO unit is the APEX value
+  g  9204  ExposureBiasValue          SR 1   OOOO unit is the APEX value
+  g  9205  MaxApertureValue            R 1   OOOO unit is the APEX value
+  g  9206  SubjectDistance             R 1   OOOO in meters
+  g  9207  MeteringMode                S 1   OOOO valid values are 0-6,255
+  g  9208  LightSource                 S 1   OOOO use 0-4,9-15,17-24 or 255
+  g  9209  Flash                       S 1   RRRR a complicated bitmask
+  g  920a  FocalLength                 R 1   OOOO in millimetres
+  g  9214  SubjectArea                 S -   OOOO 2-4 value (SubjectLocation)
+  d  927c  MakerNote                   U -   OOOO maker-specific format
+  d  9286  UserComment                 U -   OOOO see note 1)
+  f  9290  SubSecTime                  A -   OOOO /[0-9]*\s*/
+  f  9291  SubSecTimeOriginal          A -   OOOO /[0-9]*\s*/
+  f  9292  SubSecTimeDigitized         A -   OOOO /[0-9]*\s*/
+  a  a000  FlashPixVersion             U 4   MMMM '0100' for version 1.0
+  b  a001  ColorSpace                  S 1   MMMM 0x0001 or 0xffff
+  c  a002  PixelXDimension             I 1   NNNM 
+  c  a003  PixelYDimension             I 1   NNNM
+  e  a004  RelatedSoundFile            A 13  OOOO 8B+'.'+3B (DOS) filename
+  h  a005  InteroperabilityOffset      L 1   NNNO calculated by the module
+  g  a20b  FlashEnergy                 R 1   OOOO measured in BCPS
+  g  a20c  SpatialFrequencyResponse    U -   OOOO see ISO 12233
+  g  a20e  FocalPlaneXResolution       R 1   OOOO 
+  g  a20f  FocalPlaneYResolution       R 1   OOOO 
+  g  a210  FocalPlaneResolutionUnit    S 1   OOOO in inches
+  g  a214  SubjectLocation             S 2   OOOO in pixels
+  g  a215  ExposureIndex               R 1   OOOO 
+  g  a217  SensingMethod               S 1   OOOO valid values are 1-5,7-8
+  g  a300  FileSource                  U 1   OOOO value is 3, if defined
+  g  a301  SceneType                   U 1   OOOO value is 1, if defined
+  g  a302  CFAPattern                  U -   OOOO complicated format
+  g  a401  CustomRendered              S 1   OOOO valid values are 0 or 1
+  g  a402  ExposureMode                S 1   RRRR valid values are 0-2
+  g  a403  WhiteBalance                S 1   RRRR valid values are 0 or 1
+  g  a404  DigitalZoomRatio            R 1   OOOO
+  g  a405  FocalLengthIn35mmFilm       S 1   OOOO
+  g  a406  SceneCaptureType            S 1   RRRR valid values are 0-3
+  g  a407  GainControl                 R 1   OOOO valid values are 0-4
+  g  a408  Contrast                    S 1   OOOO valid values are 0-2
+  g  a409  Saturation                  S 1   OOOO valid values are 0-2
+  g  a40a  Sharpness                   S 1   OOOO valid values are 0-2
+  g  a40b  DeviceSettingDescription    U -   OOOO complicated format
+  g  a40c  SubjectDistanceRange        U -   OOOO valid values are 0-3
+  h  a420  ImageUniqueID               A 33  OOOO /[0-9a-fA-F]{32}?/
+
+  1) The 'UserComment' tag must start with an 8 byte "ID code", which
+     can be "ASCII\00\00\00", "JIS\00\00\00\00\00", "Unicode" or eight
+     null bytes for "undefined". The ID code identifies the character
+     code to be used in the following. A null terminator is not required.
+
+If the main image is compressed (which is always the case for a JPEG
+picture), there can be an IFD below SubIFD, pointed to by the
+InteroperabilityOffset tag. This third level IFD can contain only five
+tags, all optional:
+
+     Hexadecimal code                count   notes
+        |  Tag name                 type |   |
+        |  |                           | |   |
+     0001  InteroperabilityIndex       A 4   R98 or THM
+     0002  InteroperabilityVersion     U 4   value is "0100", meaning 1.00
+     1000  RelatedImageFileFormat      A -   e.g. "Exif JPEG Ver. 2.1"
+     1001  RelatedImageWidth           I 1   image X dimension
+     1002  RelatedImageLength          I 1   image Y dimension
+
+=head4 EXIF tags for the 0th IFD GPS directory
+
+The following tags are used for GPS attributes in the GPS IFD, pointed to
+(if present) by the GPSInfo tag in IFD0 or IFD1. This standard was already
+used in TIFF/EP, and is now part of Exif 2.2. The first two columns show
+tag hexadecimal codes and names. The 'type' column specifies the tag type:
+B (byte), S (short), R (rational), U (undefined) and A (ASCII, always null
+terminated). The 'count' column obviously specifies the value count ('-'
+means that it is variable). All GPS tags are optional in a JPEG or TIFF
+file, but the 'VersionID' tag must be present, if the GPS IFD is present (a
+default 'VersionID' = (2,2,0,0), i.e. v.2.2, is automatically added by this
+module if necessary).
+
+     Hexadecimal code                count   notes
+        |  Tag name                 type |   |
+        |  |                           | |   |
+       00  GPSVersionID                B 4   mandatory
+       01  GPSLatitudeRef              A 2   see note 1)
+       02  GPSLatitude                 R 3   see note 2)
+       03  GPSLongitudeRef             A 2   see note 1)
+       04  GPSLongitude                R 3   see note 2)
+       05  GPSAltitudeRef              B 1   0 (sea level) or 1 (absolute)
+       06  GPSAltitude                 R 1   in metres
+       07  GPSTimeStamp                R 3   hours, minutes and seconds
+       08  GPSSatellites               A -   satellites used for measurement
+       09  GPSStatus                   A 2   'A' (in progr.) or 'V' (interop.)
+       0a  GPSMeasureMode              A 2   '2' (2-dim) or '3' (3-dim)
+       0b  GPSDOP                      R 1   data degree of precision
+       0c  GPSSpeedRef                 A 2   see note 3)
+       0d  GPSSpeed                    R 1   speed of the GPS receiver
+       0e  GPSTrackRef                 A 2   see note 4)
+       0f  GPSTrack                    R 1   see note 5)
+       10  GPSImgDirectionRef          A 2   see note 4)
+       11  GPSImgDirection             R 1   see note 5)
+       12  GPSMapDatum                 A -   geodetic survey data
+       13  GPSDestLatitudeRef          A 2   see note 1)
+       14  GPSDestLatitude             R 3   see note 2)
+       15  GPSDestLongitudeRef         A 2   see note 1)
+       16  GPSDestLongitude            R 3   see note 2)
+       17  GPSDestBearingRef           A 2   see note 4)
+       18  GPSDestBearing              R 1   see note 5)
+       19  GPSDestDistanceRef          A 2   see note 3)
+       1a  GPSDestDistance             R 1   distance to the destination point
+       1b  GPSProcessingMethod         U -   see note 6), location finding
+       1c  GPSAreaInformation          U -   see note 6), name of the GPS area
+       1d  GPSDateStamp                A 11  YYYY:MM:DD
+       1e  GPSDifferential             S 1   0 (without) or 1 (with) diff.corr.
+
+  Notes:
+  1) A latitude or longitude reference specifies a sign for another
+     (related) latitude or longitude value tag. A latitude reference can be
+     only 'N' (for North) or 'S' (for South); a longitude reference can be
+     only 'E' (for East) or 'W' (for West).
+  2) A latitude or a longitude is stored as a sequence of three rational
+     numbers (each rational number is the ratio of two unsigned long
+     integers), representing degrees, minutes and seconds. A typical format
+     is (dd/1, mm/1, ss/1). Sometimes, seconds are dropped in favour of
+     fractions of minutes (usually with two decimal places); in this case
+     the format is (dd/1, mmmm/100, 0/1).
+  3) A "speed (distance) reference" is the unit for the speed (distance)
+     value stored in another (related) tag. The only allowed values are 'K'
+     (for Km/h or Km), 'M' (for miles/h or miles) or 'N' (knots). Let us
+     appreciate the fact that knot in English is both a unit of speed (one
+     nautical mile per hour) and of distance (one nautical mile).
+  4) A direction reference specifies how to interpret a following direction
+     value. Only two references are possible: 'T' (for the true direction)
+     or 'M' (for the magnetic direction).
+  5) A direction (of the pointed image, of the movement of the GPS
+     receiver, ecc ...) is a decimal number specifying an angle. The
+     allowed range is between 0.00 and 359.99.
+  6) The processing method and the area information are character strings,
+     whose first character specifies the character code used: this is the
+     first character of the 8-byte character code identification in the
+     'UserComment' tag in the SubIFD, so 'A' means ASCII, 'J' means JIS,
+     'U' means Unicode and a null character means undefined. Since the type
+     is not ASCII, null termination is not required.
 
 =head2 VALID TAGS FOR IPTC DATA
 
@@ -1085,79 +1690,96 @@ specification of this "de facto" standard. According to
 
 which the interested reader is urged to consult for additional details,
 those listed in the following are all valid editorial IPTC tags (2:xx,
-application records). Numeric tag values are in decimal notation. The
-character N means that the record is non-repeatable (i.e., there should not
-be two such records in the file). The number or range in square brackets
-indicates valid lengths for the record data field. The final comment
-specifies additional format constraints, sometimes in natural language: a
-"line" is made of characters matching /[^\000-\037\177]/; "CCYYMMDD" is a
-date in ISO 8601 standard, ex. "19890317" indicates March 17th 1989;
-"HHMMSS+/-HHMM" is a time in ISO 8601 standard, ex.  "090000-0500"
-indicates 9AM, 5 hours behind UTC; /regex/ means that the string must match
-the specified regular expression; "invalid" means that this valid IPTC tag
-is not used in JPEG pictures.
+application records). Numeric tag values (record keys), in the first
+column, are in decimal notation, and they are followed by tag names in the
+second column. The presence of 'N' in the third column means that the
+record is non-repeatable (i.e., there should not be two such records in the
+file). The following number or range in square brackets indicates valid
+lengths for the record data field. The final comment specifies additional
+format constraints, sometimes in natural language: /regex/ means that the
+string must match the specified regular expression; "invalid" means that
+this valid IPTC tag is not used in JPEG pictures; other formats are
+specified in the notes. Note that IPTC strings are stored in records with
+an explicit length, so they do not need the final null character (they are
+not C-strings).
 
-    0 RecordVersion                 N [  2   ] binary, always 2 in JPEGs ?
-    3 ObjectTypeReference           N [ 3-67 ] /\d{2}?:[\w\s]{0,64}?/
-    4 ObjectAttributeReference        [ 4-68 ] /\d{3}?:[\w\s]{0,64}?/
-    5 ObjectName                    N [ <=64 ] line
-    7 EditStatus                    N [ <=64 ] line
-    8 EditorialUpdate               N [  2   ] /01/
-   10 Urgency                       N [  1   ] /[1-8]/
-   12 SubjectReference                [13-236] (see note at the end)
-   15 Category                      N [ <=3  ] /[a-zA-Z]{1,3}?/
-   20 SupplementalCategory            [ <=32 ] line
-   22 FixtureIdentifier             N [ <=32 ] line without spaces
-   25 Keywords                        [ <=64 ] line
-   26 ContentLocationCode             [  3   ] /[A-Z]{3}?/
-   27 ContentLocationName             [ <=64 ] line
-   30 ReleaseDate                   N [  8   ] "CCYYMMDD"
-   35 ReleaseTime                   N [ 11   ] "HHMMSS+/-HHMM"
-   37 ExpirationDate                N [  8   ] "CCYYMMDD"
-   38 ExpirationTime                N [ 11   ] "HHMMSS+/-HHMM"
-   40 SpecialInstructions           N [ <=256] line
-   42 ActionAdvised                 N [  2   ] /0[1-4]/
-   45 ReferenceService                [ 10   ] "invalid" like 1:30
-   47 ReferenceDate                   [  8   ] "invalid" like 1:70
-   50 ReferenceNumber                 [  8   ] "invalid" like 1:40
-   55 DateCreated                   N [  8   ] "CCYYMMDD"
-   60 TimeCreated                   N [ 11   ] "HHMMSS+/-HHMM"
-   62 DigitalCreationDate           N [  8   ] "CCYYMMDD"
-   63 DigitalCreationTime           N [ 11   ] "HHMMSS+/-HHMM"
-   65 OriginatingProgram            N [ 32   ] line
-   70 ProgramVersion                N [ <=10 ] line
-   75 ObjectCycle                   N [  1   ] /a|p|b/
-   80 ByLine                          [ <=32 ] line
-   85 ByLineTitle                     [ <=32 ] line
-   90 City                          N [ <=32 ] line
-   92 SubLocation                   N [ <=32 ] line
-   95 Province/State                N [ <=32 ] line
-  100 Country/PrimaryLocationCode   N [  3   ] /[A-Z]{3}?/
-  101 Country/PrimaryLocationName   N [ <=64 ] line
-  103 OriginalTransmissionReference N [ <=32 ] line
-  105 Headline                      N [ <=256] line
-  110 Credit                        N [ <=32 ] line
-  115 Source                        N [ <=32 ] line
-  116 CopyrightNotice               N [ <=128] line
-  118 Contact                         [ <=128] line
-  120 Caption/Abstract              N [<=2000] line with CR and LF 
-  122 Writer/Editor                   [ <=32 ] line
-  125 RasterizedCaption             N [ 7360 ] binary data (460x128 PBM)
-  130 ImageType                     N [  2   ] /[0-49][WYMCKRGBTFLPS]/
-  131 ImageOrientation              N [  1   ] /P|L|S/
-  135 LanguageIdentifier            N [ 2-3  ] /[a-zA-Z]{2,3}?/
-  150 AudioType                     N [  2   ] /[012][ACMQRSTVW]/
-  151 AudioSamplingRate             N [  6   ] /\d{6}?/
-  152 AudioSamplingResolution       N [  2   ] /\d{2}?/
-  153 AudioDuration                 N [  6   ] "HHMMSS"
-  154 AudioOutcue                   N [ <=64 ] line
-  200 ObjDataPreviewFileFormat      N [  2   ] "invalid" like 1:20, binary
-  201 ObjDataPreviewFileFormatVer   N [  2   ] "invalid" like 1:22, binary
-  202 ObjDataPreviewData            N [<=256000B] "invalid", binary
+ Decimal code                          size     notes
+    |  Tag name             repeatable |        |
+    |  |                             | |        |
+    0  RecordVersion                 N [  2   ] binary, always 2 in JPEGs ?
+    3  ObjectTypeReference           N [ 3-67 ] /\d{2}?:[\w\s]{0,64}?/
+    4  ObjectAttributeReference        [ 4-68 ] /\d{3}?:[\w\s]{0,64}?/
+    5  ObjectName                    N [ <=64 ] line (see note 1)
+    7  EditStatus                    N [ <=64 ] line (see note 1)
+    8  EditorialUpdate               N [  2   ] /01/
+   10  Urgency                       N [  1   ] /[1-8]/
+   12  SubjectReference                [13-236] complicated, see note 5
+   15  Category                      N [ <=3  ] /[a-zA-Z]{1,3}?/
+   20  SupplementalCategory            [ <=32 ] line (see note 1)
+   22  FixtureIdentifier             N [ <=32 ] line without spaces
+   25  Keywords                        [ <=64 ] line (see note 1)
+   26  ContentLocationCode             [  3   ] /[A-Z]{3}?/
+   27  ContentLocationName             [ <=64 ] line (see note 1)
+   30  ReleaseDate                   N [  8   ] date (see note 2)
+   35  ReleaseTime                   N [ 11   ] time (see note 3)
+   37  ExpirationDate                N [  8   ] date (see note 2)
+   38  ExpirationTime                N [ 11   ] time (see note 3)
+   40  SpecialInstructions           N [ <=256] line (see note 1)
+   42  ActionAdvised                 N [  2   ] /0[1-4]/
+   45  ReferenceService                [ 10   ] "invalid" like 1:30
+   47  ReferenceDate                   [  8   ] "invalid" like 1:70
+   50  ReferenceNumber                 [  8   ] "invalid" like 1:40
+   55  DateCreated                   N [  8   ] date (see note 2)
+   60  TimeCreated                   N [ 11   ] time (see note 3)
+   62  DigitalCreationDate           N [  8   ] date (see note 2)
+   63  DigitalCreationTime           N [ 11   ] time (see note 3)
+   65  OriginatingProgram            N [ 32   ] line (see note 1)
+   70  ProgramVersion                N [ <=10 ] line (see note 1)
+   75  ObjectCycle                   N [  1   ] /a|p|b/
+   80  ByLine                          [ <=32 ] line (see note 1)
+   85  ByLineTitle                     [ <=32 ] line (see note 1)
+   90  City                          N [ <=32 ] line (see note 1)
+   92  SubLocation                   N [ <=32 ] line (see note 1)
+   95  Province/State                N [ <=32 ] line (see note 1)
+  100  Country/PrimaryLocationCode   N [  3   ] /[A-Z]{3}?/
+  101  Country/PrimaryLocationName   N [ <=64 ] line (see note 1)
+  103  OriginalTransmissionReference N [ <=32 ] line (see note 1)
+  105  Headline                      N [ <=256] line (see note 1)
+  110  Credit                        N [ <=32 ] line (see note 1)
+  115  Source                        N [ <=32 ] line (see note 1)
+  116  CopyrightNotice               N [ <=128] line (see note 1)
+  118  Contact                         [ <=128] line (see note 1)
+  120  Caption/Abstract              N [<=2000] line with CR and LF 
+  122  Writer/Editor                   [ <=32 ] line (see note 1)
+  125  RasterizedCaption             N [ 7360 ] binary data (460x128 PBM)
+  130  ImageType                     N [  2   ] /[0-49][WYMCKRGBTFLPS]/
+  131  ImageOrientation              N [  1   ] /P|L|S/
+  135  LanguageIdentifier            N [ 2-3  ] /[a-zA-Z]{2,3}?/
+  150  AudioType                     N [  2   ] /[012][ACMQRSTVW]/
+  151  AudioSamplingRate             N [  6   ] /\d{6}?/
+  152  AudioSamplingResolution       N [  2   ] /\d{2}?/
+  153  AudioDuration                 N [  6   ] duration (see note 4)
+  154  AudioOutcue                   N [ <=64 ] line (see note 1)
+  200  ObjDataPreviewFileFormat      N [  2   ] "invalid" like 1:20, binary
+  201  ObjDataPreviewFileFormatVer   N [  2   ] "invalid" like 1:22, binary
+  202  ObjDataPreviewData            N [<=256000B] "invalid", binary
 
- The complicated regular expression for the SubjectReference is the following:
- /[$validchar]{1,32}?:[01]\d{7}?(:[$validchar\s]{0,64}?){3}?/
- $validchar is '\040-\051\053-\071\073-\076\100-\176'
+  Notes:
+  1) A "line" is made of printable characters from the ASCII table, i.e. all
+     codes from "space" on, excluding the "delete" character. As a regular
+     expression, this corresponds to /^[^\000-\037\177]*$/.
+  2) A date is stored, following the ISO 8601 standard, as the eight character
+     string "CCYYMMDD", ex. "19890317" indicates March 17th 1989. As a regular
+     expression, this corresponds to /[0-2]\d\d\d(0\d|1[0-2])([0-2]\d|3[01])/.
+  3) A time is stored, following the ISO 8601 standard, as the eleven character
+     string "HHMMSS+/-HHMM", ex. "090000-0500" indicates 9AM, 5 hours behind
+     the coordinated universal time. As a regular expression, this corresponds
+     to /([01]\d|2[0-3])[0-5]\d[0-5]\d[\+-]([01]\d|2[0-3])[0-5]\d/.
+  4) A "duration" is stored like a "time", but there is no time zone spec;
+     this means that the string is only six characters wide (see also note 3).
+  5) The complicated regular expression for the SubjectReference is the
+     following: /[$validchar]{1,32}?:[01]\d{7}?(:[$validchar\s]{0,64}?){3}?/,
+     where $validchar is '\040-\051\053-\071\073-\076\100-\176'.
 
 =head1 AUTHOR
 

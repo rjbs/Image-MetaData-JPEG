@@ -4,53 +4,42 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Record;
-use Image::MetaData::JPEG::Tables;
+use Image::MetaData::JPEG::Tables qw(:Endianness  :RecordTypes
+				     :RecordProps :Lookups);
 no  integer;
 use strict;
 use warnings;
 
 ###########################################################
-# Various lists for JPEG record lengths, categories and   #
-# signs; see the constructor in this package and the list #
-# named @JPEG_RECORD_TYPE_NAMES for further details.      #
-# ======================================================= #
-# I give up trying to calculate the length of a reference.#
-# This is probably allocation dependent ... I use 0 here, #
-# which means "no expectation" (see the Record ctor).     #
-###########################################################
-my @JPEG_RECORD_TYPE_LENGTH   =   (1,1,1,2,4,8,1,1,2,4,8,4,8,0);
-my @JPEG_RECORD_TYPE_CATEGORY = qw(I I S I I R I S I I R F F p);
-my @JPEG_RECORD_TYPE_SIGN     = qw(N N N N N N Y N Y Y Y N N N);
- 
-###########################################################
-# Constructor for a generic key - value pair for storing  #
+# Constructor for a generic key - values pair for storing #
 # properties to be found in JPEG segments. The key is     #
 # either a numeric value (whose exact meaning depends on  #
 # the segment type, and can be found by means of lookup   #
-# tables), or a descriptive string. The value is to be    #
+# tables), or a descriptive string. The values are to be  #
 # found in the scalar pointed to by the data reference,   #
-# and it comes togheter with a value type; the meaning    #
+# and they come togheter with a value type; the meaning   #
 # of the value type is taken by the APP1 type table, but  #
 # this standard can be used also for the other segments   #
 # (but it is not stored in the file on disk, exception    #
-# made for some APP segments). The enddianness must be    #
-# given for numeric properties with more than 1 byte.     #
+# made for some APP segments). The count must be given    #
+# for fixed-length types. The enddianness must be given   #
+# for numeric properties with more than 1 byte.           #
 #=========================================================#
-# The "value" can indeed be a sequence of values. This    #
-# field is therefore a list, which, most of the time,     #
-# has a single element. Although the type lenght for      #
-# non-numeric records is 1, these records are always      #
-# stored internally as a single scalar (thus, one token). #
+# The "values" are a sequence, so this field is a list;   #
+# it stores $count elements for numeric records, and a    #
+# single scalar for non-numeric ones ("count", in this    #
+# case, corresponds to the size of $$dataref; if $count   #
+# is undefined, no length test is performed on $$dataref).#
 #=========================================================#
 # Types are as follows:                                   #
 #  0  NIBBLES    two 4-bit unsigned integers (private)    #
 #  1  BYTE       An 8-bit unsigned integer                #
-#  2  ASCII      An 8-bit byte for 7-bit ASCII strings    #
+#  2  ASCII      A variable length ASCII string           #
 #  3  SHORT      A 16-bit unsigned integer                #
 #  4  LONG       A 32-bit unsigned integer                #
 #  5  RATIONAL   Two LONGs (numerator and denominator)    #
 #  6  SBYTE      An 8-bit signed integer                  #
-#  7  UNDEFINED  A 8-bit byte which can take any value    #
+#  7  UNDEFINED  A generic variable length string         #
 #  8  SSHORT     A 16-bit signed integer                  #
 #  9  SLONG      A 32-bit signed integer (2's complem.)   #
 # 10  SRATIONAL  Two SLONGs (numerator and denominator)   #
@@ -64,14 +53,15 @@ my @JPEG_RECORD_TYPE_SIGN     = qw(N N N N N N Y N Y Y Y N N N);
 ###########################################################
 sub new {
     my ($pkg, $akey, $atype, $dataref, $count, $endian) = @_;
+    # return immediately with undef if $dataref is not a reference
+    return undef unless ref $dataref;
+    # create a Record object with some fields filled
     my $this  = bless {
 	key     => $akey,
 	type    => $atype,
 	values  => [],
 	extra   => undef,
     }, $pkg;
-    # return immediately with undef if $dataref is not a reference
-    return undef unless ref $dataref;
     # use big endian as default endianness
     $endian = $BIG_ENDIAN unless defined $endian;
     # get the actual length of the $$dataref scalar
@@ -79,24 +69,27 @@ sub new {
     # estimate the right length of $data for numeric types
     # (remember that some types can return "no expectation", i.e. 0).
     my $expected = $pkg->get_size($atype, $count);
-    # Throw an error if the supplied memory area is incorrectly
-    # sized (the test never fails for string-like records, and is
-    # not performed when $expected is 0 [i.e., no expectation])
+    # for variable-length records (those with $expected == 0), the length
+    # test must be run against $count, so we update $expected here if
+    # necessary (if $count was not given a value at call time, $expected
+    # is set to $current and the length test will never fail).
+    $expected = $count ? $count : $current if $expected == 0;
+    # Throw an error if the supplied memory area is incorrectly sized
     die "Incorrect size for $pkg (expected $expected, found $current)"
-	if ($current != $expected) && $expected;
+	if ($current != $expected);
     # get a reference to the internal value list
     my $tokens = $this->{values};
     # read the type length (used only for integers and rationals)
     my $tlength = $JPEG_RECORD_TYPE_LENGTH[$this->{type}];
     # References, strings and undefined data can be immediately saved
-    # (1 token). All integer types can be treated toghether, and
-    # rationals can be treated as integer (halving the type length!).
+    # (1 element). All integer types can be treated toghether, and
+    # rationals can be treated as integer (halving the type length).
     my $cat = $this->get_category();
     push @$tokens, $$dataref                                   if $cat =~/S|p/;
     push @$tokens, $this->decode($tlength  ,$dataref, $endian) if $cat eq 'I';
     push @$tokens, $this->decode($tlength/2,$dataref, $endian) if $cat eq 'R';
     die "Floating point not implemented. FIX ME!"              if $cat eq 'F';
-    # die if the token list is empty (debug)
+    # die if the token list is empty
     die "Empty token list!" if @$tokens == 0;
     # return the blessed reference
     return $this;
@@ -155,10 +148,11 @@ sub get_size {
 # is undefined (not supplied), the sum of all values is   #
 # returned. The index is checked for out-of-bound errors. #
 #=========================================================#
-# For string-like records, "sum"->"concatenation".        #
+# For string-like records, "sum" -> "concatenation".      #
 ###########################################################
 sub get_value {
     my ($this, $index) = @_;
+    # get a reference to the value list
     my $values = $this->{values};
     # access a single value if an index is defined or
     # there is only one value (follow to sum otherwise)
@@ -170,10 +164,14 @@ sub get_value {
 	# perform addition for numeric values
 	eval (join "+", @$values);
   VALUE_INDEX:
+    # $index defaults to zero
     $index = 0 unless defined $index;
+    # get the last legal index
     my $last_index = $#$values;
+    # check that $index is legal, throw an exception otherwise
     die "Out-of-bound record index ($index > $last_index)" 
 	if $index > $last_index;
+    # return the desired value
     return $$values[$index];
 }
 
@@ -185,6 +183,7 @@ sub get_value {
 ###########################################################
 sub set_value {
     my ($this, $new_value, $index) = @_;
+    # get a reference to the value list
     my $values = $this->{values};
     # set the first value if index is defined
     $index = 0 unless defined $index;
@@ -198,7 +197,7 @@ sub set_value {
 
 ###########################################################
 # These private functions take signed/unsigned integers   #
-# and return their unsigned/signed version (the type      #
+# and return their unsigned/signed version; the type      #
 # length in bytes must also be specified. $_[0] is the    #
 # original value, $_[1] is the type length. $msb[$n] is   #
 # an unsigned integer with the 8*$n-th bit turned up.     #
@@ -215,7 +214,7 @@ sub set_value {
 }
 
 ###########################################################
-# This method decodes a sequence of 8n-bit integers, and  #
+# This method decodes a sequence of 8$n-bit integers, and #
 # correctly takes into account signedness and endianness. #
 # The data size must be validated in advance: in this     #
 # routine it must be a multiple of the type size ($n).    #
@@ -247,7 +246,7 @@ sub decode {
 
 ###########################################################
 # This method encodes the content of $this->{values} into #
-# a sequence of 8n-bit integers, correctly taking into    #
+# a sequence of 8$n-bit integers, correctly taking into   #
 # account signedness and endianness. The return value is  #
 # a reference to the encoded scalar. See decode() for     #
 # further details (however here more fields can be read). #
@@ -258,8 +257,7 @@ sub encode {
     die "Unknown endianness" if ! $endian =~ /$BIG_ENDIAN|$LITTLE_ENDIAN/o;
     # copy the value list (the original should not be touched)
     my @tokens = @{$this->{values}};
-    # correction for signedness; $msb is an $n-byte integer
-    # with the most significant bit turned up.
+    # correction for signedness
     @tokens = map { to_unsigned($_, $n) } @tokens if $this->is_signed() eq 'Y';
     # convert the number into 1-byte digits (assuming big-endian)
     @tokens = map { my $enc = ""; vec($enc, 0, 8*$n) = $_; $enc } @tokens;
@@ -294,17 +292,19 @@ sub get {
     my $tokens = $this->{values};
     # read the type length (only used for integers and rationals)
     my $tlength = $JPEG_RECORD_TYPE_LENGTH[$type];
-    # References, strings and undefined data contain a single token
+    # References, strings and undefined data contain a single value
     # (to be taken a reference at). All integer types can be treated
     # toghether, and rationals can be treated as integer (halving the
-    # type length!). Floating points still to be coded.
-    my $cat = $this->get_category(); my $dataref = undef;
+    # type length). Floating points still to be coded.
+    my $cat  = $this->get_category(); my $dataref = undef;
     $dataref = \ $$tokens[0]                      if $cat =~/S|p/;
     $dataref = $this->encode($tlength  , $endian) if $cat eq 'I';
     $dataref = $this->encode($tlength/2, $endian) if $cat eq 'R';
     die "Floating point not implemented. FIX ME!" if $cat eq 'F';
-    # calculate the "count" (1 for references, strings, undefined)
-    my $count = ($cat =~/S|p/) ? 1 : (length($$dataref) / $tlength);
+    # calculate the "count" (the number of elements for numeric types
+    # and the length of $$dataref for references, strings, undefined)
+    my $count = ($cat =~ /S|p/) ?
+	length($$dataref) : (length($$dataref) / $tlength);
     # return the result, depending on the context
     wantarray ? ($key, $type, $count, $dataref) : $$dataref;
 }
@@ -318,7 +318,8 @@ sub get {
 ###########################################################
 sub get_description {
     my ($this, $names) = @_;
-    my $maxlen = 25; my $string_reflen = 40;
+    # some internal parameters
+    my $maxlen = 25; my $string_reflen = 40; my $max_tokens = 7;
     # assume that the key is a string (so, it is its own
     # description, and no numeric value is to be shown)
     my $descriptor = $this->{key};
@@ -326,8 +327,7 @@ sub get_description {
     # however, if it is a number we need more work
     if ($descriptor =~ /^\d*$/) {
 	# get the relevant hash for the description of this record
-	my $section_hash = \%JPEG_RECORD_NAME;
-	$section_hash = $$section_hash{$_} foreach (@$names);
+	my $section_hash = JPEG_lookup(@$names);
 	# fix the numeric tag
 	$numerictag = $descriptor;
         # extract a description string; if there is no entry
@@ -356,22 +356,25 @@ sub get_description {
     my $tokens = $this->{values};
     $tokens = [ unpack "a1" x length($$tokens[0]), $$tokens[0] ] 
 	if $this->is($UNDEF);
-    # we want to write at most $max tokens in the value list
-    my $max = 7; my $extra = $#$tokens - $max;
-    my $token_limit = $extra > 0 ? $max : $#$tokens;
+    # we want to write at most $max_tokens tokens in the value list
+    my $extra = $#$tokens - $max_tokens;
+    my $token_limit = $extra > 0 ? $max_tokens : $#$tokens;
     # This routine reworks ASCII strings a bit before displaying them.
     # In particular it trims unreasonably long strings and replaces
     # non-printing characters with their hexadecimal representation. Note,
     # however, that "more characters" counts each control char as three.
-    # Remember to copy the string to avoid side-effects!
+    # Also, null-terminated strings have the null character chopped off,
+    # but a '.' is written after the closing '"'. Remember to copy the
+    # string to avoid side-effects!
     my $tt = sub { 
-	(my $ss=$_[0])=~ s/([\000-\037\177-\377])/sprintf "\\%02x",ord($1)/ge;
+	my $ss = $_[0]; my $nt = ($ss =~ s/(.*)\000$/$1/) ? '.' : '';
+	$ss =~ s/([\000-\037\177-\377])/sprintf "\\%02x",ord($1)/ge;
 	my $rr = length($ss) - $string_reflen;
-	($rr <= 24) ? "\"$ss\"" : sprintf "\"%s\" (+ %5d more chars)",
-	substr($ss,0,$string_reflen), $rr; };
+	($rr <= 24) ? "\"$ss\"$nt" : sprintf "\"%s\"%s (+ %5d more chars)",
+	substr($ss,0,$string_reflen), $nt, $rr; };
     # integers, strings and floating points are written in sequence;
     # rationals must be written in pairs (use a flip-flop);
-    # undefined values are written byte by byte.
+    # undefined values are written on a byte per byte basis.
     my $f = '/';
     foreach (@$tokens[0..$token_limit]) {
 	# update the flip flop
@@ -386,7 +389,7 @@ sub get_description {
 	$description .= sprintf "%s%d", $f,$_    if $category eq 'R';
     }
     # terminate the line; remember to put a warning note if there were
-    # more than $max element to display, then return the description
+    # more than $max_tokens element to display, then return the description
     $description .= " ... ($extra more values)" if $extra > 0;
     $description .= "\n";
     # return the descriptive string

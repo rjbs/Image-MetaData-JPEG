@@ -4,20 +4,20 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables;
+use Image::MetaData::JPEG::Tables qw(:Lookups :TagsAPP13);
 use Image::MetaData::JPEG::Segment;
 no  integer;
 use strict;
 use warnings;
 
 ###########################################################
-# A few useful local variable/structures. $subdirname is  #
-# the name of the IPTC subdirectory record in the main    #
-# record directory of an APP13 segment. The last hash is  #
-# an inverted hash for fast lookups.                      #
+# $IPTC_subdir_name is the name of the IPTC subdirectory  #
+# record in the main record directory of an APP13 segment.#
+# The two hashes are fast lookup tables for numeric to    #
+# textual and back tag translations.                      #
 ###########################################################
 my $IPTC_subdir_name = 'IPTC_RECORD_2';
-my %IPTC_tags        = %{$JPEG_RECORD_NAME{APP13}{IPTC_RECORD_2}};
+my %IPTC_tags        = %{JPEG_lookup('APP13', $IPTC_subdir_name)};
 my %IPTC_names       = reverse %IPTC_tags;
 
 ###########################################################
@@ -251,19 +251,24 @@ sub remove_IPTC_subdirectory {
 
 ###########################################################
 # This method returns a reference to a hash containing a  #
-# copy of the list of IPTC records in the current segment #
-# (if present). $type selects the output format:          #
-#  - NUMERIC: hash with native numeric tags               #
-#  - TEXTUAL: hash with translated text tags (default)    #
-# If a numerical IPTC tag is not known, a custom textual  #
-# tag is created with "Unknown_tag_" followed by the nu-  #
+# copy of the list of IPTC records in the current segment,#
+# if present, undef otherwise. Each hash element is a     #
+# (key, arrayref) pair, where 'key' is an IPTC tag and    #
+# 'arrayref' points to an array with the record values    #
+# (since an IPTC tag can be repeateable, this array can   #
+# actually contain more than one value). The $type argu-  #
+# ment selects the output format:                         #
+#  - NUMERIC: hash with native numeric keys               #
+#  - TEXTUAL: hash with translated textual keys (default) #
+# If a numerical IPTC key is not known, a custom textual  #
+# key is created with "Unknown_tag_" followed by the nu-  #
 # merical value (solves problem with non-standard tags).  #
 # ------------------------------------------------------- #
 # Note that there is no check at all on the validity of   #
 # the IPTC record values: their format is not checked and #
-# one or multiple values can be attached to a single tag  #
-# independently of the IPTC "standard". This is, in some  #
-# sense, consistent with the fact that also "unknown"     #
+# one or multiple values can be attached to a single key  #
+# independently of the IPTC repeatability. This is, in    #
+# some sense, consistent with the fact that also "unknown"#
 # tags are included in the output.                        #
 ###########################################################
 sub get_IPTC_data {
@@ -282,9 +287,6 @@ sub get_IPTC_data {
     # values, accumulating these values according to the tag.
     my %IPTC_data = map { $_->{key} => [] } @$IPTC_array;
     push @{$IPTC_data{$_->{key}}}, $_->get_value() for @$IPTC_array;
-    # erase 'RecordVersion', i.e., tag number zero, because
-    # it contains only binary data hardly useful.
-    delete $IPTC_data{0};
     # if the type is textual, the tags must be translated; if there
     # is no entry  in %IPTC_tags with key equal to $_, create a tag
     # carrying "Unknown_tag_" followed by the key numerical value.
@@ -301,15 +303,24 @@ sub get_IPTC_data {
 # type of each entry in the input %$data hash can be      #
 # numeric or textual, independently of the others (the    #
 # same key can appear in both forms, the corresponding    #
-# values will be appended). The value of each entry can   #
-# be an array reference or a scalar (you can use this as  #
-# a shortcut for value arrays with only one value). The   #
-# $action argument can be 'ADD' or 'REPLACE', and it      #
-# discriminates weather the passed data must be added to  #
-# or must replace the current datasets in the IPTC subdir.#
-# The return value is a reference to a hash containing    #
-# the rejected key-values entries. The entries of %$data  #
-# are not modified.                                       #
+# values will be put together). The value of each entry   #
+# can be an array reference or a scalar (you can use this #
+# as a shortcut for value arrays with only one value).    #
+# The $action argument can be: (default = REPLACE)        #
+# - ADD : new records are added and nothing is deleted;   #
+#      however, if you try to add a non-repeatable record #
+#      which is already present, the newly supplied value #
+#      replaces the pre-existing value.                   #
+# - UPDATE : new records replace those characterised by   #
+#      the same tags, but the others are preserved. This  #
+#      makes it possible to modify repeatable records.    #
+# - REPLACE : all records present in the IPTC subdirecto- #
+#      ry are deleted before inserting the new ones.      #
+# If, after implementing the changes required by $action, #
+# the 'RecordVersion' record (dataset 0) is still unde-   #
+# fined, it is added (with version = 2). The return value #
+# is a reference to a hash containing the rejected key-   #
+# values entries. The entries of %$data are not modified. #
 # ------------------------------------------------------- #
 # At the end, the segment data area is updated. An entry  #
 # in the %$data hash can be rejected for various reasons: #
@@ -327,52 +338,89 @@ sub set_IPTC_data {
     return unless ref $data eq 'HASH';
     # set the default action, if it is undefined
     $action = 'REPLACE' unless defined $action;
-    # complain about undefined actions
-    die "Unknown action $action" unless $action =~ /REPLACE|ADD/;
-    # prepare to hash reference and initialise them to anonymous empty
+    # complain about unknown actions
+    die "Unknown action $action" unless $action =~ /ADD|UPDATE|REPLACE/;
+    # prepare two hash references and initialise them to anonymous empty
     # hashes; they are going to contain accepted and rejected data
     my $data_accepted = {}; my $data_rejected = {};
     # populate both $data_accepted and $data_rejected. First, all entries
-    # are accepted, exception made for those with unknown textual tags.
-    # Also, all accepted entries have their tags forced to numeric form.
+    # are accepted, exception made for those with unknown textual keys.
+    # Also, all accepted entries have their keys forced to numeric form.
     for (keys %$data) {
 	# get copies, do not manipulate original data!
 	my ($tag, $value) = ($_, $$data{$_});
+	# accept both array references and plain scalars
 	$value = (ref $value) ?  [ @$value ] : [ $value ];
 	# textual to numeric translation, if textual and known
 	$tag = $IPTC_names{$tag} if exists $IPTC_names{$tag};
-	# get a reference to the correct repository
-	my $repository = ($tag =~/^[0-9]*$/) ? $data_accepted : $data_rejected;
+	# get a reference to the correct repository: an entry is accepted
+	# if keys are numeric and known to the %IPTC_tags hash and if they
+	# pass the value_is_OK test; rejected otherwise.
+	my $repository = 
+	    ( $tag =~ /^[0-9]*$/ && exists $IPTC_tags{$tag} &&
+	      value_is_OK($tag, $value) ) ? $data_accepted : $data_rejected;
 	# add data to the repository (do not overwrite!)
-	if (! exists $$repository{$tag}) { $$repository{$tag} = $value; }
-	else                     { push @{$$repository{$tag}}, @$value; } }
-    # $data_accepted should have now numeric keys. Perform a check on
-    # the validity of keys (they are valid if they are known to the
-    # %IPTC_tags hash and if they pass the value_is_OK test). Invalid
-    # entries are moved to $data_rejected.
-    for (keys %$data_accepted) {
-	$$data_rejected{$_} = delete $$data_accepted{$_}
-	unless exists $IPTC_tags{$_} && value_is_OK($_, $$data_accepted{$_}); }
-    # if $action is 'REPLACE', all records need to be eliminated
-    # before pushing the new ones in.
+	$$repository{$tag} = [ ] unless exists $$repository{$tag};
+	push @{$$repository{$tag}}, @$value; }
+    # if $action is not 'REPLACE', old records need to be merged in;
+    # take a copy of all current records if necessary
+    my $oldrecs = $action =~ /REPLACE/ ? {} : $this->get_IPTC_data('NUMERIC');
+    # loop over all entries in the %$oldrecs hash and insert them into the
+    # new hash if necessary (the "old hash" is of course empty if $action
+    # corresponds to 'REPLACE', so we are dealing with 'ADD' or 'UPDATE' here).
+    while (my ($tag, $oldarrayref) = each %$oldrecs) {
+	# a pre-existing tag must always remain, prepare a slot. 
+	$$data_accepted{$tag} = [] unless exists $$data_accepted{$tag};
+	# if the tag is already covered by the new values and the
+	# requested action is 'UPDATE', do nothing ....
+	my $newarrayref = $$data_accepted{$tag};
+	next if @$newarrayref && $action =~ /UPDATE/;
+	# ... otherwise (i.e., if $action is 'ADD' or $action is 'UPDATE'
+	# but the tag is not overwritten by new values) insert the old
+	# values at the beginning of the value array.
+	unshift @$newarrayref, @$oldarrayref; }
+    # the previous merging could have assigned more than one value to
+    # non-repeatable records (for $action equal to 'ADD'). Solve this
+    # problem, retaining only the last value in this case.
+    shift_non_repeatables($data_accepted);
+    # be sure that the 'RecordVersion' record (dataset 0) is present;
+    # insert, if necessary (with version = 2) ?
+    $$data_accepted{0} = [ "\000\002" ]
+	unless exists $$data_accepted{0} && @{$$data_accepted{0}};
+    # get and clear the IPTC subdirectory
     my $dirref = $this->provide_IPTC_subdirectory();
-    @$dirref = () if $action =~ /REPLACE/;
+    @$dirref = ();
     # now all keys are surely valid and numeric. For each element
     # in the hash, create one or more Records corresponding to a
-    # dataset and insert it into the appropriate subdirectory
+    # dataset and insert them into the appropriate subdirectory
     map { my $key = $_; map {
 	# each element of the array in a hash element creates a new Record
-	$this->store_record($dirref,$key,$ASCII,\$_,length $_); }
+	$this->store_record($dirref, $key, $ASCII, \ $_, length $_); }
 	  # sort the Records on the numeric key
 	  @{$$data_accepted{$_}} } sort { $a <=> $b } keys %$data_accepted;
-    # be sure that the first record is 'RecordVersion', i.e., dataset
-    # number zero. Create and insert, if necessary (with version = 2) ?
-    $this->store_record($dirref, 0, $UNDEF, \ "\000\002", 2),
-    unshift @$dirref, pop @$dirref unless @$dirref && $$dirref[0]->{key} == 0;
     # remember to commit these changes to the data area
     $this->update();
     # return the reference of rejected tags/values
     return $data_rejected;
+}
+
+###########################################################
+# This function "corrects" a hash of IPTC records violat- #
+# ing some non-repeatable constraint. If a non-repeatable #
+# record is found with multiple values, only the last one #
+# is retained.                                            #
+###########################################################
+sub shift_non_repeatables {
+    my ($hashref) = @_;
+    # loop over all elements in the hash
+    while (my ($tag, $arrayref) = each %$hashref) {
+	# get the constraints of this record
+	my $constraints = $HASH_IPTC_GENERAL{$tag};
+	# skip unknown tags (this shouldn't happen) and repeatable records
+	next unless $constraints && $$constraints[1] eq 'N';
+	# retain only the last element of this non-repeatable record
+	$$hashref{$tag} = [ $$arrayref[$#$arrayref] ] if @$arrayref != 1;
+    }
 }
 
 ###########################################################

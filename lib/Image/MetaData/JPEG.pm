@@ -5,13 +5,13 @@
 ###########################################################
 #use 5.008;
 package Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables;
+use Image::MetaData::JPEG::Tables qw(:JPEGgrammar);
 use Image::MetaData::JPEG::Segment;
 no  integer;
 use strict;
 use warnings;
 
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 ###########################################################
 # Load other parts for this package. In order to avoid    #
@@ -21,7 +21,7 @@ our $VERSION = '0.10';
 BEGIN {
     require "Image/MetaData/JPEG/JPEG_various.pl";
     require "Image/MetaData/JPEG/JPEG_comments.pl";
-    require "Image/MetaData/JPEG/JPEG_exif.pl";
+    require "Image/MetaData/JPEG/JPEG_app1_exif.pl";
     require "Image/MetaData/JPEG/JPEG_app13.pl";
 }
 
@@ -119,8 +119,10 @@ sub save {
     # Use an indirect handler, which is closed authomatically
     # when it goes out of scope (so, no need to call close()).
     # If open fails, it return false and sets the special
-    # variable $! to reflect the system error.
+    # variable $! to reflect the system error. Legacy systems
+    # might need an explicity binary open.
     open(my $out, ">", $filename) || return undef;
+    binmode($out);
     # For each segment in the segment list, write the content of
     # the data area (including the preamble when needed) to the
     # disk file. Save the results of each output for later testing.
@@ -402,12 +404,18 @@ sub parse_ecs {
 # the second argument is "INDEXES") of those segments     #
 # whose name matches a given regular expression.          #
 # The output can be invalid after adding/removing any     #
-# segment. If $regex is undefined, returns all indexes.   #
+# segment. If $regex is undefined or evaluates to the     #
+# empty string, this method returns all indexes.          #
 ###########################################################
 sub get_segments {
     my ($this, $regex, $do_indexes) = @_;
-    # fix the regular expression to "" if undefined
-    $regex = "" unless defined $regex;
+    # fix the regular expression to "." if undefined or set to the
+    # empty string. I do this because I want to avoid the stupid
+    # behaviour of m//; from `man perlop`: if the pattern evaluates
+    # to the empty string, the last successfully matched regular
+    # expression is used instead; if no match has previously succeeded,
+    # this will (silently) act instead as a genuine empty pattern
+    $regex = "." unless defined $regex && length $regex > 0;
     # get the list of segment references in this file
     my $segments = $this->{segments};
     # return the list of matched segments
@@ -430,7 +438,8 @@ sub find_new_app_segment_position {
     # just in order to avoid a warning for half-read files
     # with an incomplete set of segments, let us make sure
     # that no position is past the segment array end
-    my $safe = sub { my $l = $this->get_segments()-1; ($l<$_[0])?$l:$_[0] };
+    my $last_segment = -1 + scalar $this->get_segments();
+    my $safe = sub { ($last_segment < $_[0]) ? $last_segment : $_[0] };
     # get the indexes of the DHP segments; if this list
     # is not void, return its position
     return &$safe($_) for $this->get_segments("DHP", "INDEXES");

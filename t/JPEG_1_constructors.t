@@ -12,8 +12,7 @@ plan tests => 10;
 #=======================================
 
 #########################
-BEGIN { $::cname  = 'Image::MetaData::JPEG';
-	use_ok( $::cname, "Class exists" ); }
+BEGIN { $::cname  = 'Image::MetaData::JPEG'; use_ok $::cname; }
 
 #########################
 ok( -s $tphoto, "Test photo exists" );
@@ -34,7 +33,7 @@ ok( $image, "Plain constructor" );
 isa_ok( $image, $::cname, "Constructed object" );
 
 #########################
-open(my $handle, "<", $tphoto);
+open(my $handle, "<", $tphoto); binmode($handle); # for Windows
 read($handle, my $buffer, -s $tphoto); close($handle);
 $image_2 = new $::cname(\ $buffer);
 ok( $image_2, "Constructor with reference" );

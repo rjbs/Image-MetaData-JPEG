@@ -10,14 +10,7 @@ IFD   = Image File Directory
 
 References:
 
-	"TIFF(TM) Revision 6.0 Final", June 3 1992,
-	Adobe Developers Association, Developer's Desk,
-	Aldus Corporation, 411 First Ave. South, Suite 200
-	Seattle, WA  98104, 206-622-5500
-
-	"Design rule for Camera File system", v1.0
-	 English Version 1999.1.7, Adopted December 1998
-	Japan Electronic Industry Development Association (JEIDA)
+=== EXIF and private EXIF tags ==========================================
 
 	"Digital Still Camera Image File Format Standard
 	 (Exchangeable image file format for Digital Still Cameras: Exif)"
@@ -28,13 +21,36 @@ References:
 	 Exif Version 2.2", JEITA CP-3451, April 2002
 	Japan Electronic Industry Development Association (JEIDA)
 
-	"Digital compression and coding of continuous-tone still images:
-	 requirements and guidelines", CCITT recommendation T.81, 09/1992,
-	The International Telegraph and Telephone Consultative Committee.
+	http://hul.harvard.edu/jhove/tiff-tags.html
+	(also for private TIFF tags and GPS tags)
 
-	"\"Solo\" Image File Format. RichTIFF and its replacement
-	 by \"Solo\" JFIF", version 2.0a, 14Oct1998
-	Coatsworth Communications Inc., Brampton, Ontario, Canada
+=== other TIFF tags =====================================================
+
+	"TIFF(TM) Revision 6.0 Final", June 3 1992,
+	Adobe Developers Association, Developer's Desk,
+	Aldus Corporation, 411 First Ave. South, Suite 200
+	Seattle, WA  98104, 206-622-5500
+
+	DRAFT - TIFF CLASS F, October 1, 1991
+
+	DRAFT - TIFF Technical Note #2, 17-Mar-95
+	
+	"Adobe Pagemaker 6.0 TIFF Technical Notes", (note 1,2,3 and OPI)
+	september 14, 1995, Adobe Systems Incorporated
+
+	ISO 12234-2, "Electronic still-picture imaging -- Removable memory
+	              -- Part 2: TIFF/EP image data format"
+
+	ISO 12639,   "Graphic technology -- Prepress digital data exchange
+		      -- Tag image file format for image  technology (TIFF/IT)"
+
+	http://partners.adobe.com/asn/developer/pdfs
+
+	http://www.libtiff.org/support.html
+
+	http://www.remotesensing.org/geotiff/spec/geotiffhome.html
+
+=== IPTC tags ===========================================================
 
 	"IPTC-NAA: Information Interchange Model", version 4, 1-Jul-1999
 	Comite Internationale des Telecommunications de Presse.
@@ -42,8 +58,27 @@ References:
 	NAA:  Newspaper Association of America
 	(note: absurd hexadecimal notation, e.g. 7/10 means 0x7a)
  
+=== XMP data ============================================================
+
 	"XMP, Adding Intelligence to Media", XMP specification,
 	Adobe System Inc., January 2004.
+
+	"Embedding XMP Metadata in Application Files", draft,
+	Adobe System Inc., June 6, 2002.
+
+=========================================================================
+
+	"Design rule for Camera File system", v1.0
+	 English Version 1999.1.7, Adopted December 1998
+	Japan Electronic Industry Development Association (JEIDA)
+
+	"Digital compression and coding of continuous-tone still images:
+	 requirements and guidelines", CCITT recommendation T.81, 09/1992,
+	The International Telegraph and Telephone Consultative Committee.
+
+	"\"Solo\" Image File Format. RichTIFF and its replacement
+	 by \"Solo\" JFIF", version 2.0a, 14Oct1998
+	Coatsworth Communications Inc., Brampton, Ontario, Canada
 
 	"Adobe Photoshop 6.0: File Formats Specifications",
 	Adobe System Inc., ver.6.0, rel.2, November 2000.
@@ -63,4 +98,3 @@ References:
 
 	http://park2.wakwak.com/~tsuruzoh/Computer/Digicams/exif-e.html
 
-	http://www.adobe.com/Support/TechNotes.html

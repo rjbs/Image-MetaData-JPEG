@@ -4,7 +4,9 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
-use Image::MetaData::JPEG::Tables;
+use Image::MetaData::JPEG::Tables qw(:RecordTypes :Endianness :Lookups
+				     :TagsAPP0 :TagsAPP1  :TagsAPP2
+				     :TagsAPP3 :TagsAPP13 :TagsAPP14);
 use Image::MetaData::JPEG::Record;
 no  integer;
 use strict;
@@ -288,7 +290,7 @@ sub parse_app1_exif {
     if ($ifd1_link != 0) {
 	$this->parse_ifd('IFD1', $ifd1_link, $tiff_base, \$offset, 1);
 	# look for the compression tag (thumbnail type record)
-	my $ifd1_dir = $this->provide_subdirectory('IFD1');
+	my $ifd1_dir       = $this->provide_subdirectory('IFD1');
 	my $th_type_record = $this->search_record($APP1_TH_TYPE, $ifd1_dir);
 	# if there is no thumbnail, stop searching
 	goto END_THUMBNAIL unless defined $th_type_record;
@@ -301,8 +303,8 @@ sub parse_app1_exif {
 	my ($thumb_link, $thumb_size) = map {
 	    my $rec = $this->search_record($_, $ifd1_dir);
 	    $rec ? $rec->get_value() : undef } $th_type == $APP1_TH_TIFF
-		? ($APP1_THTIFF_OFFSET, $APP1_THTIFF_LENGTH) 
-		: ($APP1_THJPEG_OFFSET, $APP1_THJPEG_LENGTH);
+		? ($THTIFF_OFFSET, $THTIFF_LENGTH) 
+		: ($THJPEG_OFFSET, $THJPEG_LENGTH);
 	# Some pictures declare they have a thumbnail, but there is
 	# no thumbnail link for it (maybe this is due to some program
 	# which strips the thumbnail out without completely removing
@@ -383,12 +385,11 @@ sub parse_TIFF_header {
     $this->{endianness} = $endianness;
     # decode the signature (42, i.e. 0x002a), die if it is unknown
     my $signature = $this->store_record
-	('Signature', $SHORT,$offset)->get_value();
+	('Signature', $SHORT, $offset)->get_value();
     die "Incorrect signature ($signature)" if $signature != $APP1_TIFF_SIG;
-    # decode the offset of the 0th IFD: this is usually 8,
-    # but we are not going to assume it. 
-    my $ifd0_link = $this->store_record
-	('IFD0_Pointer', $LONG, $offset)->get_value();
+    # decode the offset of the 0th IFD: this is usually 8, but we are
+    # not going to assume it. Do not store the record (it is uninteresting)
+    my $ifd0_link = $this->read_record($LONG, $offset);
     # reset the current endianness to big endian
     $this->{endianness} = $BIG_ENDIAN;
     # return all relevant values in a list
@@ -414,14 +415,21 @@ sub parse_TIFF_header {
 # REFERENCE record with key "IFD" and value $dirref; then #
 # in $$dirref there is a REFERENCE record with key equal  #
 # to "SubIFD" and so on ...                               #
-# --------------------------------------------------------#
+# ------------------------------------------------------- #
 # After the execution of this routine, a new REFERENCE    #
 # record will be present, whose value is a reference to   #
 # a list of all the entries in the IFD. If $link is unde- #
 # fined, this routine returns immediately (in this way    #
 # you do not need to test $link before). No next_link are #
 # tolerated in the underlying subdirectories.             #
-#---------------------------------------------------------#
+# ------------------------------------------------------- #
+# Deeper IFDs are searched for and inserted, with the     #
+# help of %IFD_SUBDIRS. For every new subdir, a REFERENCE #
+# record is created, pointing to it; the originating      #
+# offset record is removed because it contains very fra-  #
+# gile information now (its textual tag is saved in the   #
+# "extra" field of the REFERENCE record).                 #
+# ------------------------------------------------------- #
 # structure of an IFD:                                    #
 #     2  bytes    Number n of Interoperability arrays     #
 #    12n bytes    the n arrays (12 bytes each)            #
@@ -462,8 +470,22 @@ sub parse_ifd {
 	# don't parse if there is no such subdirectory
 	next unless defined (my $record = $this->search_record($_, $dirref));
 	# get the location of this secondary IFD and parse it
-	$this->parse_ifd($IFD_SUBDIRS{$_}, $record->get_value(),
-			 $tiff_base, $offset_ref, 1); }
+	$this->parse_ifd($IFD_SUBDIRS{$_},
+			 $record->get_value(), $tiff_base, $offset_ref, 1);
+	# mark the record containing the offset to the newly created
+	# IFD by setting its "extra" field. This record isn't any more
+	# interesting after we have used it, and should be recalculated
+	# every time we change the Exif data area.
+	$record->{extra} = "deleteme";
+	# Look for the new IFD referece (it should be the last record
+	# in the current subdirectory) and set its "extra" field to
+	# the (textually translated) key of $record, just for reference
+	$this->search_record('LAST_RECORD', $dirref)->{extra} =
+	    JPEG_lookup($this->{name}, split(/@/, $dirnames), $record->{key});
+    }
+    # remove all records marked for deletion in the current subdirectory
+    # (remember that "extra" is most of the time undefined).
+    @$dirref = grep { ! $_->{extra} || $_->{extra} ne "deleteme" } @$dirref;
     # if $no_next is true and we have a non-zero "next link", complain
     warn "Warning: \"next link\" != 0 ($next_ifd_link) in $dirnames\n"
 	if $no_next && $next_ifd_link; 
@@ -501,8 +523,10 @@ sub parse_interop {
     my $count = $this->read_record($LONG , $offset);
     # ask the record class to calculate the number of bytes necessary
     # to store the value (the type size times the number of items).
-    # This should always be a meaningful number, not zero.
     my $size = Image::MetaData::JPEG::Record->get_size($type, $count);
+    # if $size is zero, it means that the Record type is variable-length;
+    # in this case, $size should be given by $count
+    $size = $count if $size == 0;
     # prepare a string with the content of the last four bytes in
     # the Interoperability array (or with its low address part if
     # $size is smaller than four); then, update the offset (always +4)
@@ -920,8 +944,10 @@ sub parse_app2_ICC_tags {
 	$tag_type = $LONG   if $tag_desc =~ /ui32|XYZ |view/;
 	# depending on the tag type, calculate its length in bytes and
 	# therefore the number of elements in the data area (the count).
+	# If the type is variable-length (i.e., if get_size returns
+	# zero), $tag_count must be indeed equal to $tag_size.
 	my $tag_length = Image::MetaData::JPEG::Record->get_size($tag_type, 1);
-	my $tag_count  = $tag_size / $tag_length;
+	my $tag_count  = ($tag_length == 0) ? $tag_size : $tag_size/$tag_length;
 	# now, store the content of the tag data area (minus the first
 	# 8 bytes) as a record of given key, type and count. Store the
 	# record in the tag table subdirectory.

@@ -1,31 +1,49 @@
 Original JPEG file: t/test_photo.jpg
-(2160x1440)
+(432x288)
       0B <0xd8   SOI>
-   6134B <0xe1  APP1>
- 	[               Identifier]<......> = [    ASCII] "Exif\00\00"
+     14B <0xe0  APP0>
+ 	[               Identifier]<......> = [    ASCII] "JFIF".
+ 	[             MajorVersion]<......> = [     BYTE]  1
+ 	[             MinorVersion]<......> = [     BYTE]  1
+ 	[                    Units]<......> = [     BYTE]  1
+ 	[                 XDensity]<......> = [    SHORT]  230
+ 	[                 YDensity]<......> = [    SHORT]  230
+ 	[               XThumbnail]<......> = [     BYTE]  0
+ 	[               YThumbnail]<......> = [     BYTE]  0
+     18B <0xfe   COM>
+ 	[                  Comment]<......> = [    ASCII] "This is a comment\0a"
+   5759B <0xe1  APP1>
+ 	[               Identifier]<......> = [    ASCII] "Exif\00".
  	[               Endianness]<......> = [    ASCII] "MM"
  	[                Signature]<......> = [    SHORT]  42
- 	[             IFD0_Pointer]<......> = [     LONG]  8
- 	[                     IFD0]<......> = [REFERENCE]  --> 8163aec
- 	[                     IFD1]<......> = [REFERENCE]  --> 82b5bf8
+ 	[                     IFD0]<......> = [REFERENCE]  --> 82dbbd0
+ 	[                     IFD1]<......> = [REFERENCE]  --> 82edfc8
  	[            ThumbnailData]<......> = [    UNDEF]  ff d8 ff db 00 84 00 09 ... (3914 more values)
  	 	********** APP1 --> IFD0 ********** ( 9 records)
- 	 	[                     Make]<0x010f> = [    ASCII] "EASTMAN KODAK COMPANY\00"
- 	 	[                    Model]<0x0110> = [    ASCII] "KODAK DX3900 ZOOM DIGITAL CAMERA\00"
+ 	 	[                     Make]<0x010f> = [    ASCII] "EASTMAN KODAK COMPANY".
+ 	 	[                    Model]<0x0110> = [    ASCII] "KODAK DX3900 ZOOM DIGITAL CAMERA".
  	 	[              Orientation]<0x0112> = [    SHORT]  1
  	 	[              XResolution]<0x011a> = [ RATIONAL]  230/1
  	 	[              YResolution]<0x011b> = [ RATIONAL]  230/1
  	 	[           ResolutionUnit]<0x0128> = [    SHORT]  2
  	 	[         YCbCrPositioning]<0x0213> = [    SHORT]  1
- 	 	[               ExifOffset]<0x8769> = [     LONG]  506
- 	 	[                   SubIFD]<......> = [REFERENCE]  --> 81653e0
- 	 	 	********** APP1 --> IFD0 --> SubIFD ********** (26 records)
+ 	 	[                      GPS]<......> = [REFERENCE] <GPSInfo> --> 82e3e74
+ 	 	[                   SubIFD]<......> = [REFERENCE] <ExifOffset> --> 82eab04
+ 	 	 	********** APP1 --> IFD0 --> GPS ********** ( 7 records)
+ 	 	 	[             GPSVersionID]<0x0000> = [     BYTE]  2 0 0 0
+ 	 	 	[           GPSLatitudeRef]<0x0001> = [    ASCII] "N".
+ 	 	 	[              GPSLatitude]<0x0002> = [ RATIONAL]  54/1 5938/100 0/1
+ 	 	 	[          GPSLongitudeRef]<0x0003> = [    ASCII] "W".
+ 	 	 	[             GPSLongitude]<0x0004> = [ RATIONAL]  1/1 5485/100 0/1
+ 	 	 	[             GPSTimeStamp]<0x0007> = [ RATIONAL]  14/1 58/1 24/1
+ 	 	 	[              GPSMapDatum]<0x0012> = [    ASCII] "WGS84".
+ 	 	 	********** APP1 --> IFD0 --> SubIFD ********** (25 records)
  	 	 	[             ExposureTime]<0x829a> = [ RATIONAL]  1/45
  	 	 	[                  FNumber]<0x829d> = [ RATIONAL]  34/10
  	 	 	[          ExposureProgram]<0x8822> = [    SHORT]  2
  	 	 	[              ExifVersion]<0x9000> = [    UNDEF]  30 32 31 30
- 	 	 	[         DateTimeOriginal]<0x9003> = [    ASCII] "2000:11:04 06:36:53\00"
- 	 	 	[        DateTimeDigitized]<0x9004> = [    ASCII] "2000:11:04 06:36:53\00"
+ 	 	 	[         DateTimeOriginal]<0x9003> = [    ASCII] "2000:11:04 06:36:53".
+ 	 	 	[        DateTimeDigitized]<0x9004> = [    ASCII] "2000:11:04 06:36:53".
  	 	 	[  ComponentsConfiguration]<0x9101> = [    UNDEF]  01 02 03 00
  	 	 	[        ShutterSpeedValue]<0x9201> = [SRATIONAL]  55/10
  	 	 	[            ApertureValue]<0x9202> = [ RATIONAL]  35/10
@@ -40,14 +58,13 @@ Original JPEG file: t/test_photo.jpg
  	 	 	[               ColorSpace]<0xa001> = [    SHORT]  1
  	 	 	[          PixelXDimension]<0xa002> = [    SHORT]  2160
  	 	 	[          PixelYDimension]<0xa003> = [    SHORT]  1440
- 	 	 	[   InteroperabilityOffset]<0xa005> = [     LONG]  1900
  	 	 	[            ExposureIndex]<0xa215> = [ RATIONAL]  400/1
  	 	 	[            SensingMethod]<0xa217> = [    SHORT]  2
  	 	 	[               FileSource]<0xa300> = [    UNDEF]  03
  	 	 	[                SceneType]<0xa301> = [    UNDEF]  01
- 	 	 	[                  Interop]<......> = [REFERENCE]  --> 82b4b9c
+ 	 	 	[                  Interop]<......> = [REFERENCE] <InteroperabilityOffset> --> 82ee6e0
  	 	 	 	********** APP1 --> IFD0 --> SubIFD --> Interop ********** ( 2 records)
- 	 	 	 	[    InteroperabilityIndex]<0x0001> = [    ASCII] "R98\00"
+ 	 	 	 	[    InteroperabilityIndex]<0x0001> = [    ASCII] "R98".
  	 	 	 	[  InteroperabilityVersion]<0x0002> = [    UNDEF]  30 31 30 30
  	 	********** APP1 --> IFD1 ********** ( 7 records)
  	 	[              Compression]<0x0103> = [    SHORT]  6
@@ -55,18 +72,57 @@ Original JPEG file: t/test_photo.jpg
  	 	[              XResolution]<0x011a> = [ RATIONAL]  72/1
  	 	[              YResolution]<0x011b> = [ RATIONAL]  72/1
  	 	[           ResolutionUnit]<0x0128> = [    SHORT]  2
- 	 	[    JPEGInterchangeFormat]<0x0201> = [     LONG]  2204
+ 	 	[    JPEGInterchangeFormat]<0x0201> = [     LONG]  1831
  	 	[ JPEGIntercha...matLength]<0x0202> = [     LONG]  3922
-    130B <0xdb   DQT>
- 	[   PrecisionAndIdentifier]<......> = [  NIBBLES]  0 0
- 	[        QuantizationTable]<......> = [     BYTE]  9 9 9 9 9 9 12 11 ... (56 more values)
- 	[   PrecisionAndIdentifier]<......> = [  NIBBLES]  0 1
- 	[        QuantizationTable]<......> = [     BYTE]  9 9 9 9 9 9 12 11 ... (56 more values)
-     18B <0xfe   COM>
- 	[                  Comment]<......> = [    ASCII] "This is a comment\0a"
+   3158B <0xe2  APP2>
+ 	[               Identifier]<......> = [    ASCII] "ICC_PROFILE".
+ 	[           SequenceNumber]<......> = [     BYTE]  1
+ 	[              TotalNumber]<......> = [     BYTE]  1
+ 	[            ProfileHeader]<......> = [REFERENCE]  --> 82ef424
+ 	[                 TagTable]<......> = [REFERENCE]  --> 82f399c
+ 	 	********** APP2 --> ProfileHeader ********** (21 records)
+ 	 	[        CMM_TypeSignature]<......> = [    ASCII] "Lino"
+ 	 	[     ProfileVersionNumber]<......> = [    UNDEF]  02 10 00 00
+ 	 	[           ClassSignature]<......> = [    ASCII] "mntr"
+ 	 	[      ColorSpaceSignature]<......> = [    ASCII] "RGB "
+ 	 	[ ConnectionSpaceSignature]<......> = [    ASCII] "XYZ "
+ 	 	[                     Year]<......> = [    SHORT]  1998
+ 	 	[                    Month]<......> = [    SHORT]  2
+ 	 	[                      Day]<......> = [    SHORT]  9
+ 	 	[                     Hour]<......> = [    SHORT]  6
+ 	 	[                   Minute]<......> = [    SHORT]  49
+ 	 	[                   Second]<......> = [    SHORT]  0
+ 	 	[     ProfileFileSignature]<......> = [    ASCII] "acsp"
+ 	 	[ PrimaryPlatformSignature]<......> = [    ASCII] "MSFT"
+ 	 	[         CMM_ProfileFlags]<......> = [     LONG]  0
+ 	 	[  DeviceManifactSignature]<......> = [    ASCII] "IEC "
+ 	 	[     DeviceModelSignature]<......> = [    ASCII] "sRGB"
+ 	 	[         DeviceAttributes]<......> = [    UNDEF]  00 00 00 00 00 00 00 00
+ 	 	[          RenderingIntent]<......> = [     LONG]  0
+ 	 	[       XYZ_PCS_Illuminant]<......> = [    UNDEF]  00 00 f6 d6 00 01 00 00 ... (4 more values)
+ 	 	[  ProfileCreatorSignature]<......> = [    ASCII] "HP  "
+ 	 	[       ProfileID_Checksum]<......> = [    UNDEF]  00 00 00 00 00 00 00 00 ... (8 more values)
+ 	 	********** APP2 --> TagTable ********** (17 records)
+ 	 	[                Copyright]<0x63707274> = [    ASCII] <text>"Copyright (c) 1998 Hewlett-Packard Company".
+ 	 	[       ProfileDescription]<0x64657363> = [    UNDEF] <desc> 00 00 00 12 73 52 47 42 ... (92 more values)
+ 	 	[          MediaWhitePoint]<0x77747074> = [     LONG] <XYZ > 62289 65536 71372
+ 	 	[          MediaBlackPoint]<0x626b7074> = [     LONG] <XYZ > 0 0 0
+ 	 	[          RedMatrixColumn]<0x7258595a> = [     LONG] <XYZ > 28578 14581 912
+ 	 	[        GreenMatrixColumn]<0x6758595a> = [     LONG] <XYZ > 25241 46981 6362
+ 	 	[         BlueMatrixColumn]<0x6258595a> = [     LONG] <XYZ > 9376 3972 46799
+ 	 	[            DeviceMfgDesc]<0x646d6e64> = [    UNDEF] <desc> 00 00 00 16 49 45 43 20 ... (96 more values)
+ 	 	[          DeviceModelDesc]<0x646d6464> = [    UNDEF] <desc> 00 00 00 2e 49 45 43 20 ... (120 more values)
+ 	 	[          ViewingCondDesc]<0x76756564> = [    UNDEF] <desc> 00 00 00 2c 52 65 66 65 ... (118 more values)
+ 	 	[        ViewingConditions]<0x76696577> = [     LONG] <view> 1287422 1335086 1101588 257484 267019 220318 1
+ 	 	[                Luminance]<0x6c756d69> = [     LONG] <XYZ > 4983126 5242880 5709799
+ 	 	[              Measurement]<0x6d656173> = [    UNDEF] <meas> 00 00 00 01 00 00 00 00 ... (20 more values)
+ 	 	[               Technology]<0x74656368> = [    ASCII] <sig >"CRT "
+ 	 	[                   RedTRC]<0x72545243> = [    UNDEF] <curv> 00 00 04 00 00 00 00 05 ... (2044 more values)
+ 	 	[                 GreenTRC]<0x67545243> = [    UNDEF] <curv> 00 00 04 00 00 00 00 05 ... (2044 more values)
+ 	 	[                  BlueTRC]<0x62545243> = [    UNDEF] <curv> 00 00 04 00 00 00 00 05 ... (2044 more values)
    5444B <0xed APP13>
- 	[               Identifier]<......> = [    ASCII] "Photoshop 3.0\00"
- 	[            IPTC_RECORD_2]<......> = [REFERENCE] <> --> 82b893c
+ 	[               Identifier]<......> = [    ASCII] "Photoshop 3.0".
+ 	[            IPTC_RECORD_2]<......> = [REFERENCE] <> --> 82f6f08
  	[?? Unknown record type ??]<0x0425> = [    UNDEF] <> f5 8a 44 6d 60 cb b1 88 ... (8 more values)
  	[           ResolutionInfo]<0x03ed> = [    UNDEF] <> 01 2c 00 00 00 01 00 02 ... (8 more values)
  	[?? Unknown record type ??]<0x0426> = [    UNDEF] <> 00 00 00 00 00 00 00 00 ... (6 more values)
@@ -104,43 +160,31 @@ Original JPEG file: t/test_photo.jpg
  	 	[                  Urgency]<0x000a> = [    ASCII] "5"
  	 	[                 Keywords]<0x0019> = [    ASCII] "Communications"
  	 	[          CopyrightNotice]<0x0074> = [    ASCII] "xxx frixxon - TreeFoto.org"
-     15B <0xc0 SOF_0>
+     65B <0xdb   DQT>
+ 	[   PrecisionAndIdentifier]<......> = [  NIBBLES]  0 0
+ 	[        QuantizationTable]<......> = [     BYTE]  6 4 5 6 5 4 6 6 ... (56 more values)
+      9B <0xc0 SOF_0>
  	[          SamplePrecision]<......> = [     BYTE]  8
- 	[            MaxLineNumber]<......> = [    SHORT]  1440
- 	[        MaxSamplesPerLine]<......> = [    SHORT]  2160
- 	[          ImageComponents]<......> = [     BYTE]  3
+ 	[            MaxLineNumber]<......> = [    SHORT]  288
+ 	[        MaxSamplesPerLine]<......> = [    SHORT]  432
+ 	[          ImageComponents]<......> = [     BYTE]  1
  	[      ComponentIdentifier]<......> = [     BYTE]  1
  	[          SamplingFactors]<......> = [  NIBBLES]  2 2
  	[    QTDestinationSelector]<......> = [     BYTE]  0
- 	[      ComponentIdentifier]<......> = [     BYTE]  2
- 	[          SamplingFactors]<......> = [  NIBBLES]  1 1
- 	[    QTDestinationSelector]<......> = [     BYTE]  1
- 	[      ComponentIdentifier]<......> = [     BYTE]  3
- 	[          SamplingFactors]<......> = [  NIBBLES]  1 1
- 	[    QTDestinationSelector]<......> = [     BYTE]  1
-    416B <0xc4   DHT>
+     27B <0xc4   DHT>
  	[       ClassAndIdentifier]<......> = [  NIBBLES]  0 0
- 	[              CodeLengths]<......> = [     BYTE]  0 1 5 1 1 1 1 1 ... (8 more values)
- 	[                 CodeData]<......> = [     BYTE]  0 1 2 3 4 5 6 7 ... (4 more values)
+ 	[              CodeLengths]<......> = [     BYTE]  0 0 7 1 1 1 0 0 ... (8 more values)
+ 	[                 CodeData]<......> = [     BYTE]  1 2 3 4 5 6 7 0 ... (2 more values)
+     78B <0xc4   DHT>
  	[       ClassAndIdentifier]<......> = [  NIBBLES]  1 0
- 	[              CodeLengths]<......> = [     BYTE]  0 2 1 3 3 2 4 3 ... (8 more values)
- 	[                 CodeData]<......> = [     BYTE]  1 2 3 0 4 17 5 18 ... (154 more values)
- 	[       ClassAndIdentifier]<......> = [  NIBBLES]  0 1
- 	[              CodeLengths]<......> = [     BYTE]  0 3 1 1 1 1 1 1 ... (8 more values)
- 	[                 CodeData]<......> = [     BYTE]  0 1 2 3 4 5 6 7 ... (4 more values)
- 	[       ClassAndIdentifier]<......> = [  NIBBLES]  1 1
- 	[              CodeLengths]<......> = [     BYTE]  0 2 1 2 4 4 3 4 ... (8 more values)
- 	[                 CodeData]<......> = [     BYTE]  0 1 2 3 17 4 5 33 ... (154 more values)
-     10B <0xda   SOS>
- 	[           ScanComponents]<......> = [     BYTE]  3
+ 	[              CodeLengths]<......> = [     BYTE]  0 2 1 3 2 3 5 5 ... (8 more values)
+ 	[                 CodeData]<......> = [     BYTE]  1 2 3 0 4 17 5 33 ... (53 more values)
+      6B <0xda   SOS>
+ 	[           ScanComponents]<......> = [     BYTE]  1
  	[        ComponentSelector]<......> = [     BYTE]  1
  	[          EntropySelector]<......> = [  NIBBLES]  0 0
- 	[        ComponentSelector]<......> = [     BYTE]  2
- 	[          EntropySelector]<......> = [  NIBBLES]  1 1
- 	[        ComponentSelector]<......> = [     BYTE]  3
- 	[          EntropySelector]<......> = [  NIBBLES]  1 1
  	[   SpectralSelectionStart]<......> = [     BYTE]  0
  	[     SpectralSelectionEnd]<......> = [     BYTE]  63
  	[ SuccessiveAp...tPosition]<......> = [  NIBBLES]  0 0
- 203691B <ECS (Raw data)>
+  21129B <ECS (Raw data)>
       0B <0xd9   EOI>

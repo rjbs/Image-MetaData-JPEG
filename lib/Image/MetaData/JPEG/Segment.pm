@@ -4,7 +4,7 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
-use Image::MetaData::JPEG::Tables;
+use Image::MetaData::JPEG::Tables qw(:JPEGgrammar);
 use Image::MetaData::JPEG::Record;
 no  integer;
 use strict;
@@ -220,14 +220,14 @@ sub output_segment_data {
 ###########################################################
 sub get_description {
     my ($this) = @_;
-    # prepare a few preliminary variables
+    # prepare the marker and the error message
     my $amarker = $JPEG_MARKER{$this->{name}};
-    chomp(my $anerror = $this->{error});
+    my $error   = $this->{error}; chomp $error if defined $error;
     # prepare a header for this segment (was Segment_Banner)
     my $description = sprintf("%7dB ", $this->size()) .
 	($amarker ? sprintf "<0x%02x %5s>", $amarker, $this->{name} :
 	 sprintf "<%10s>", $this->{name} ) .
-	 ($anerror ? " {Error: $anerror}" : "") . "\n";
+	 ($error ? " {Error: $error}" : "") . "\n";
     # a list for successive keys for numeric tag descriptions
     my $names = [ $this->{name} ];
     # show all the records we have in our structures (recursively)
@@ -242,6 +242,8 @@ sub get_description {
 ###########################################################
 sub show_directory {
     my ($this, $records, $names) = @_;
+    # protection againts invalid references
+    return "" unless ref $records eq 'ARRAY';
     # prepare the string to be returned at the end
     my $description = "";
     # an initially empty list for remembering sub-dirs
@@ -260,7 +262,7 @@ sub show_directory {
 	# update the $names list
 	push @$names, $dir_name;
 	# print a sub-header for this directory
-	$description .= Directory_Banner($names, scalar @$directory);
+	$description .= Directory_Banner($names, $directory);
 	# show the sub directory
 	$description .= $this->show_directory($directory, $names);
 	# pop the last dir name from @$names
@@ -275,10 +277,18 @@ sub show_directory {
 # generic header for a segment directory.                 #
 ###########################################################
 sub Directory_Banner {
-    my ($names, $alength) = @_; my $buffer = "";
-    $buffer = join " --> ", @$names;
-    return sprintf "%s%s %s %s (%2d records)\n",
-    " \t" x (scalar @$names), "*" x 10, $buffer, "*" x 10, $alength;
+    my ($names, $dirref) = @_;
+    # protections against invalid references
+    $names = [] unless ref $names eq 'ARRAY';
+    $dirref = [], push @$names, "[invalid]" unless ref $dirref eq 'ARRAY';
+    # prepare parts of the description
+    my $buffer = join " --> ", @$names;
+    my $decoration = "*" x 10;
+    my $indentation = " \t" x scalar @$names;
+    # complete the description and return it
+    my $description = sprintf "%s%s %s %s (%2d records)", 
+    $indentation, $decoration, $buffer, $decoration, scalar @$dirref;
+    return $description . "\n";
 }
 
 ###########################################################
@@ -385,13 +395,14 @@ sub provide_subdirectory {
 # the only one actually calling the JPEG::Record ctor.    #
 # It needs the record identifier, the value type, [a sca- #
 # lar reference to read data from] or [the offset of the  #
-# memory to read in the data area], and an optional value #
-# count (if unspecified, it is set to 1 by the ctor).     #
+# memory to read in the data area], and an optional count.#
 # A reference to the record is returned at the end .      #
 #=========================================================#
 # If a scalar reference is passed, no check is performed  #
 # on the size of the referenced scalar, because it is as- #
-# sumed that this is dealt with in the caller routine.    #
+# sumed that this is dealt with in the caller routine (be #
+# sure that $count is correct in this case!), and all the #
+# arguments are simply passed to the Record constructor.  #
 # The correct endianness is read from the value of the    #
 # current endianness, which is a private object member.   #
 ###########################################################
@@ -402,9 +413,9 @@ sub create_record {
 	# the data reference is indeed an offset
 	my $offset = $dataref;
 	# buffer length is calculated by the Record class
-	# (we are assuming here that we never try to read from
-	# memory something with variable size, e.g. references).
 	my $length = Image::MetaData::JPEG::Record->get_size($type, $count);
+	# for variable-length types, $count is the real length
+	$length = $count if $length == 0;
 	# replace the third argument with a scalar reference
 	$dataref = \ $this->data($offset, $length);
 	# update the offset through its alias (dangerous)

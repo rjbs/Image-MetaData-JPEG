@@ -4,7 +4,6 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables;
 use Image::MetaData::JPEG::Segment;
 no  integer;
 use strict;

@@ -4,108 +4,144 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Tables;
-require Exporter;
-no integer;
-@ISA = qw(Exporter);
-@EXPORT = qw($JPEG_PUNCTUATION %JPEG_MARKER $BIG_ENDIAN $LITTLE_ENDIAN
-	     @JPEG_RECORD_TYPE_NAME $NIBBLES $BYTE $ASCII
-	     $SHORT $LONG $RATIONAL $SBYTE $UNDEF $SSHORT
-	     $SLONG $SRATIONAL $FLOAT $DOUBLE $REFERENCE
-	     $APP0_JFIF_TAG $APP0_JFXX_TAG $APP0_JFXX_JPG
-	     $APP0_JFXX_1B $APP0_JFXX_3B $APP0_JFXX_PAL %IFD_SUBDIRS
-	     $APP1_EXIF_TAG $APP1_XMP_TAG $APP1_TIFF_SIG $APP1_TH_JPEG
-	     $APP2_FPXR_TAG $APP2_ICC_TAG $APP3_EXIF_TAG $APP1_TH_TYPE
-	     $APP1_TH_TIFF $APP1_THTIFF_OFFSET $APP1_THTIFF_LENGTH
-	     $APP1_THJPEG_OFFSET $APP1_THJPEG_LENGTH $APP1_IFD1_THUMB_LENGTH 
-	     $APP13_PHOTOSHOP_IPTC $APP13_PHOTOSHOP_IDENTIFIER
-	     $APP13_PHOTOSHOP_TYPE $APP13_IPTC_TAGMARKER
-	     $APP14_PHOTOSHOP_IDENTIFIER
-	     %JPEG_RECORD_NAME %HASH_IPTC_GENERAL
-	     );
+use Exporter;
+use strict;
+no  integer;
 
-# this constant is prefixed to every JPEG marker
-$JPEG_PUNCTUATION = 0xff;
-
-# non-repetitive JPEG markers
-%JPEG_MARKER = 
-    (TEM => 0x01, # for TEMporary private use in arithmetic coding
-     DHT => 0xc4, # Define Huffman Table(s)
-     JPG => 0xc8, # reserved for JPEG extensions
-     DAC => 0xcc, # Define Arithmetic Coding Conditioning(s)
-     SOI => 0xd8, # Start Of Image
-     EOI => 0xd9, # End Of Image
-     SOS => 0xda, # Start Of Scan
-     DQT => 0xdb, # Define Quantization Table(s)
-     DNL => 0xdc, # Define Number of Lines
-     DRI => 0xdd, # Define Restart Interval
-     DHP => 0xde, # Define Hierarchical Progression
-     EXP => 0xdf, # EXPand reference component(s)
-     COM => 0xfe, # COMment block
-     );
-
-# markers 0x02 --> 0xbf are REServed for future uses
-for (0x02..0xbf) { $JPEG_MARKER{sprintf "res%02x", $_} = $_; }
-# some markers in 0xc0 --> 0xcf correspond to Start-Of-Frame typologies
-for (0xc0..0xc3, 0xc5..0xc7, 0xc9..0xcb, 
-     0xcd..0xcf) { $JPEG_MARKER{sprintf "SOF_%d", $_ - 0xc0} = $_; }
-# markers 0xd0 --> 0xd7 correspond to ReSTart with module 8 count
-for (0xd0..0xd7) { $JPEG_MARKER{sprintf "RST%d", $_ - 0xd0} = $_; }
-# markers 0xe0 --> 0xef are the APPlication markers
-for (0xe0..0xef) { $JPEG_MARKER{sprintf "APP%d", $_ - 0xe0} = $_; }
-# markers 0xf0 --> 0xfd are reserved for JPEG extensions
-for (0xf0..0xfd) { $JPEG_MARKER{sprintf "JPG%d", $_ - 0xf0} = $_; }
-
-# symbolic constants for the record type names
-@JPEG_RECORD_TYPE_NAME = qw(NIBBLES   BYTE  ASCII  SHORT   LONG
-			    RATIONAL  SBYTE UNDEF  SSHORT  SLONG
-			    SRATIONAL FLOAT DOUBLE REFERENCE);
-sub enum { for my $j (0..$#_) { ${$_[$j]} = $j; } }
-&enum(@JPEG_RECORD_TYPE_NAME);
-
-# various interesting constants --------------------
-$BIG_ENDIAN			= 'MM';
-$LITTLE_ENDIAN			= 'II';
-$APP0_JFIF_TAG			= "JFIF\000";
-$APP0_JFXX_TAG			= "JFXX\000";
-$APP0_JFXX_JPG			= 0x10;
-$APP0_JFXX_1B			= 0x11;
-$APP0_JFXX_3B			= 0x13;
-$APP0_JFXX_PAL			= 768;
-$APP3_EXIF_TAG			= "Meta\000\000";
-$APP2_FPXR_TAG			= "FPXR\000";
-$APP1_EXIF_TAG			= "Exif\000\000";
-$APP2_ICC_TAG			= "ICC_PROFILE\000";
-$APP1_XMP_TAG			= "http://ns.adobe.com/xap/1.0/\000";
-$APP1_TIFF_SIG			= 42;
-$APP1_TH_TYPE			= 0x0103;
-$APP1_TH_TIFF			= 1;
-$APP1_TH_JPEG			= 6;
-$APP1_THTIFF_OFFSET		= 0x0111;
-$APP1_THTIFF_LENGTH		= 0x0117;
-$APP1_THJPEG_OFFSET		= 0x0201;
-$APP1_THJPEG_LENGTH		= 0x0202;
-$JPG_TH				= 'JPEGInterchangeFormat';
-$APP3_IFD0_SPECIAL_TAG		= 0xc36e;
-$APP3_IFD0_BORDERS_TAG		= 0xc36f;
-$APP1_IFD0_SUBIFD_TAG		= 0x8769;
-$APP1_IFD0_GPSINFO_TAG		= 0x8825;
-$APP1_SubIFD_MAKERNOTE		= 0x927c;
-$APP1_SubIFD_INTEROP_TAG	= 0xa005;
-$APP13_PHOTOSHOP_IDENTIFIER	= "Photoshop 3.0\000";
-$APP13_PHOTOSHOP_TYPE		= '8BIM';
-$APP13_PHOTOSHOP_IPTC		= 0x0404;
-$APP13_IPTC_TAGMARKER		= 0x1c;
-$APP14_PHOTOSHOP_IDENTIFIER	= 'Adobe';
-
-# complications due to APP1 structure
-%IFD_SUBDIRS =
-    ($APP1_IFD0_GPSINFO_TAG   => 'IFD0@GPS',
-     $APP1_IFD0_SUBIFD_TAG    => 'IFD0@SubIFD',
-     $APP1_SubIFD_INTEROP_TAG => 'IFD0@SubIFD@Interop',
-#     $APP1_SubIFD_MAKERNOTE   => 'IFD0@SubIFD@MakerNote',
-     $APP3_IFD0_SPECIAL_TAG   => 'IFD0@Special',
-     $APP3_IFD0_BORDERS_TAG   => 'IFD0@Borders',
-     );
+#============================================================================#
+#============================================================================#
+#============================================================================#
+# This section defines the attitude of this module to export; no variable or #
+# method is exported by default. Everything is exportable via %EXPORT_TAGS.  #
+#----------------------------------------------------------------------------#
+our @ISA         = qw(Exporter);                                             #
+our @EXPORT      = qw();                                                     #
+our @EXPORT_OK   = qw();                                                     #
+our %EXPORT_TAGS =                                                           #
+    (RecordTypes => [qw($NIBBLES $BYTE $ASCII $SHORT $LONG $RATIONAL),       #
+		     qw($SBYTE $UNDEF $SSHORT $SLONG $SRATIONAL $FLOAT),     #
+		     qw($DOUBLE $REFERENCE)],                                #
+     RecordProps => [qw(@JPEG_RECORD_TYPE_NAME @JPEG_RECORD_TYPE_LENGTH),    #
+		     qw(@JPEG_RECORD_TYPE_CATEGORY @JPEG_RECORD_TYPE_SIGN)], #
+     Endianness  => [qw($BIG_ENDIAN $LITTLE_ENDIAN)],                        #
+     JPEGgrammar => [qw($JPEG_PUNCTUATION %JPEG_MARKER)],                    #
+     TagsAPP0    => [qw($APP0_JFIF_TAG $APP0_JFXX_TAG $APP0_JFXX_JPG),       #
+		     qw($APP0_JFXX_1B $APP0_JFXX_3B $APP0_JFXX_PAL)],        #
+     TagsAPP1    => [qw($APP1_EXIF_TAG $APP1_XMP_TAG $APP1_TIFF_SIG),        #
+		     qw($APP1_TH_JPEG $APP1_TH_TIFF $APP1_TH_TYPE),          #
+		     qw($THJPEG_OFFSET $THJPEG_LENGTH),                      #
+		     qw($THTIFF_OFFSET $THTIFF_LENGTH),                      #
+		     qw(%HASH_GPS_GENERAL %IFD_SUBDIRS)],                    #
+     TagsAPP2    => [qw($APP2_FPXR_TAG $APP2_ICC_TAG)],                      #
+     TagsAPP3    => [qw($APP3_EXIF_TAG %IFD_SUBDIRS)],                       #
+     TagsAPP13   => [qw($APP13_PHOTOSHOP_IPTC $APP13_PHOTOSHOP_IDENTIFIER),  #
+		     qw($APP13_PHOTOSHOP_TYPE $APP13_IPTC_TAGMARKER),        #
+		     qw(%HASH_IPTC_GENERAL)],                                #
+     TagsAPP14   => [qw($APP14_PHOTOSHOP_IDENTIFIER)],                       #
+     Lookups     => [qw(&JPEG_lookup)], );                                   #
+#----------------------------------------------------------------------------#
+Exporter::export_ok_tags                                                     #
+    qw(RecordTypes RecordProps Endianness JPEGgrammar),                      #
+    qw(TagsAPP0 TagsAPP1 TagsAPP2 TagsAPP3 TagsAPP13 TagsAPP14 Lookups);     #
+#============================================================================#
+#============================================================================#
+#============================================================================#
+# Constants for the grammar of a JPEG files. You can find here everything    #
+# about segment markers as well as the JPEG puncutation mark.                # 
+#----------------------------------------------------------------------------#
+our $JPEG_PUNCTUATION = 0xff; # constant prefixed to every JPEG marker       #
+our %JPEG_MARKER =            # non-repetitive JPEG markers                  #
+    (TEM => 0x01,  # for TEMporary private use in arithmetic coding          #
+     DHT => 0xc4,  # Define Huffman Table(s)                                 #
+     JPG => 0xc8,  # reserved for JPEG extensions                            #
+     DAC => 0xcc,  # Define Arithmetic Coding Conditioning(s)                #
+     SOI => 0xd8,  # Start Of Image                                          #
+     EOI => 0xd9,  # End Of Image                                            #
+     SOS => 0xda,  # Start Of Scan                                           #
+     DQT => 0xdb,  # Define Quantization Table(s)                            #
+     DNL => 0xdc,  # Define Number of Lines                                  #
+     DRI => 0xdd,  # Define Restart Interval                                 #
+     DHP => 0xde,  # Define Hierarchical Progression                         #
+     EXP => 0xdf,  # EXPand reference component(s)                           #
+     COM => 0xfe); # COMment block                                           #
+#----------------------------------------------------------------------------#
+# markers 0x02 --> 0xbf are REServed for future uses                         #
+for (0x02..0xbf) { $JPEG_MARKER{sprintf "res%02x", $_} = $_; }               #
+# some markers in 0xc0 --> 0xcf correspond to Start-Of-Frame typologies      #
+for (0xc0..0xc3, 0xc5..0xc7, 0xc9..0xcb,                                     #
+     0xcd..0xcf) { $JPEG_MARKER{sprintf "SOF_%d", $_ - 0xc0} = $_; }         #
+# markers 0xd0 --> 0xd7 correspond to ReSTart with module 8 count            #
+for (0xd0..0xd7) { $JPEG_MARKER{sprintf "RST%d", $_ - 0xd0} = $_; }          #
+# markers 0xe0 --> 0xef are the APPlication markers                          #
+for (0xe0..0xef) { $JPEG_MARKER{sprintf "APP%d", $_ - 0xe0} = $_; }          #
+# markers 0xf0 --> 0xfd are reserved for JPEG extensions                     #
+for (0xf0..0xfd) { $JPEG_MARKER{sprintf "JPG%d", $_ - 0xf0} = $_; }          #
+#============================================================================#
+#============================================================================#
+#============================================================================#
+# Functions for generating lookup tables [hashes] (arg0=hashref,arg1=index)  #
+# or arrays (arg0=hashref, arg1=index) from hashes; it is assumed that the   #
+# general hash they work on has array references as values.                  #
+# -------------------------------------------------------------------------- #
+sub generate_lookup { map { $_ => $_[0]{$_}[$_[1]] } keys %{$_[0]} };        #
+sub generate_array  { map { $_[0]{$_}[$_[1]] } (0..(-1+scalar keys %{$_[0]}))};
+#============================================================================#
+#============================================================================#
+#============================================================================#
+# Various lists for JPEG record names, lengths, categories and signs; see    #
+# Image::MetaData::JPEG::Record class for further details. The general hash  #
+# is private to this file, the other arrays are exported if so requested.    #
+# -------------------------------------------------------------------------- #
+# I gave up trying to calculate the length of a reference. This is probably  #
+# allocation dependent ... I use 0 here, meaning the length is variable.     #
+#============================================================================#
+my %RECORD_TYPE_GENERAL =                                                    #
+    ((our $NIBBLES   =  0) => [ 'NIBBLES'   , 1, 'I', 'N' ],                 #
+     (our $BYTE      =  1) => [ 'BYTE'      , 1, 'I', 'N' ],                 #
+     (our $ASCII     =  2) => [ 'ASCII'     , 0, 'S', 'N' ],                 #
+     (our $SHORT     =  3) => [ 'SHORT'     , 2, 'I', 'N' ],                 #
+     (our $LONG      =  4) => [ 'LONG'      , 4, 'I', 'N' ],                 #
+     (our $RATIONAL  =  5) => [ 'RATIONAL'  , 8, 'R', 'N' ],                 #
+     (our $SBYTE     =  6) => [ 'SBYTE'     , 1, 'I', 'Y' ],                 #
+     (our $UNDEF     =  7) => [ 'UNDEF'     , 0, 'S', 'N' ],                 #
+     (our $SSHORT    =  8) => [ 'SSHORT'    , 2, 'I', 'Y' ],                 #
+     (our $SLONG     =  9) => [ 'SLONG'     , 4, 'I', 'Y' ],                 #
+     (our $SRATIONAL = 10) => [ 'SRATIONAL' , 8, 'R', 'Y' ],                 #
+     (our $FLOAT     = 11) => [ 'FLOAT'     , 4, 'F', 'N' ],                 #
+     (our $DOUBLE    = 12) => [ 'DOUBLE'    , 8, 'F', 'N' ],                 #
+     (our $REFERENCE = 13) => [ 'REFERENCE' , 0, 'p', 'N' ],    );           #
+#----------------------------------------------------------------------------#
+our @JPEG_RECORD_TYPE_NAME     = generate_array(\ %RECORD_TYPE_GENERAL, 0);  #
+our @JPEG_RECORD_TYPE_LENGTH   = generate_array(\ %RECORD_TYPE_GENERAL, 1);  #
+our @JPEG_RECORD_TYPE_CATEGORY = generate_array(\ %RECORD_TYPE_GENERAL, 2);  #
+our @JPEG_RECORD_TYPE_SIGN     = generate_array(\ %RECORD_TYPE_GENERAL, 3);  #
+#============================================================================#
+#============================================================================#
+#============================================================================#
+# various interesting constants which are not tags (mostly record values)    #
+#============================================================================#
+our $BIG_ENDIAN			= 'MM';                                      #
+our $LITTLE_ENDIAN		= 'II';                                      #
+our $APP0_JFIF_TAG		= "JFIF\000";                                #
+our $APP0_JFXX_TAG		= "JFXX\000";                                #
+our $APP0_JFXX_JPG		= 0x10;                                      #
+our $APP0_JFXX_1B		= 0x11;                                      #
+our $APP0_JFXX_3B		= 0x13;                                      #
+our $APP0_JFXX_PAL		= 768;                                       #
+our $APP1_EXIF_TAG		= "Exif\000\000";                            #
+our $APP1_XMP_TAG		= "http://ns.adobe.com/xap/1.0/\000";        #
+our $APP1_TIFF_SIG		= 42;                                        #
+our $APP1_TH_TIFF		= 1;                                         #
+our $APP1_TH_JPEG		= 6;                                         #
+our $APP2_FPXR_TAG		= "FPXR\000";                                #
+our $APP2_ICC_TAG		= "ICC_PROFILE\000";                         #
+our $APP3_EXIF_TAG		= "Meta\000\000";                            #
+our $APP13_PHOTOSHOP_IDENTIFIER	= "Photoshop 3.0\000";                       #
+our $APP13_PHOTOSHOP_TYPE	= '8BIM';                                    #
+our $APP13_PHOTOSHOP_IPTC	= 0x0404;                                    #
+our $APP13_IPTC_TAGMARKER	= 0x1c;                                      #
+our $APP14_PHOTOSHOP_IDENTIFIER	= 'Adobe';                                   #
+#----------------------------------------------------------------------------#
 
 # Tags used by the 0th and 1st IFD. The tags are the same, only the
 # support level changes (that for the 1st IFD is indicated if different)
@@ -122,13 +158,13 @@ $APP14_PHOTOSHOP_IDENTIFIER	= 'Adobe';
 #   C: other tags <see also A,B,C> (Exif 2.2 and TIFF 6.0)
 #   D: pointers to other IFDs (EXIF 2.2)
 #   x: tags registered to companies
-%HASH_APP1_IFD =
+our %HASH_APP1_IFD =
     (0x00fe => 'NewSubfileType',              # 0
      0x00ff => 'SubFileType',                 # 0
      0x0100 => 'ImageWidth',                  # A (JPEG marker)
      0x0101 => 'ImageLength',                 # A (JPEG marker)
      0x0102 => 'BitsPerSample',               # A (JPEG marker)
-     $APP1_TH_TYPE => 'Compression',          # A (JPEG marker)  mandatory
+     0x0103 => 'Compression',                 # A (JPEG marker)  mandatory
      0x0106 => 'PhotometricInterpretation',   # A (not JPEG)
      0x0107 => 'Thresholding',                # 0
      0x0108 => 'CellWidth',                   # 0
@@ -138,11 +174,11 @@ $APP14_PHOTOSHOP_IDENTIFIER	= 'Adobe';
      0x010e => 'ImageDescription',            # C recommended    optional
      0x010f => 'Make',                        # C recommended    optional
      0x0110 => 'Model',                       # C recommended    optional
-     $APP1_THTIFF_OFFSET => 'StripOffsets',   # B (not JPEG)
+     0x0111 => 'StripOffsets',                # B (not JPEG)
      0x0112 => 'Orientation',                 # A recommended
      0x0115 => 'SamplesPerPixel',             # A (JPEG marker)
      0x0116 => 'RowsPerStrip',                # B (not JPEG)
-     $APP1_THTIFF_LENGTH => 'StripByteCounts',# B (not JPEG)
+     0x0117 => 'StripByteCounts',             # B (not JPEG)
      0x0118 => 'MinSampleValue',              # 0
      0x0119 => 'MaxSampleValue',              # 0
      0x011a => 'XResolution',                 # A mandatory
@@ -194,8 +230,8 @@ $APP14_PHOTOSHOP_IDENTIFIER	= 'Adobe';
      0x015b => 'JPEGTables',                  # update (1995) for JPEG-in-TIFF
      0x015f => 'OPIProxy',                    # [Adobe TIFF technote (OPI)]
      0x0200 => 'JPEGProc',                    # 6 (obsoleted by JPEGTables)
-     $APP1_THJPEG_OFFSET => $JPG_TH,          # B (not JPEG)     mandatory
-     $APP1_THJPEG_LENGTH => "${JPG_TH}Length",# B (not JPEG)     mandatory
+     0x0201 => 'JPEGInterchangeFormat',       # B (not JPEG)     mandatory
+     0x0202 => 'JPEGInterchangeFormatLength', # B (not JPEG)     mandatory
      0x0203 => 'JPEGRestartInterval',         # 6 (obsoleted by JPEGTables)
      0x0205 => 'JPEGLosslessPredictors',      # 6 (obsoleted by JPEGTables)
      0x0206 => 'JPEGPointTransforms',         # 6 (obsoleted by JPEGTables)
@@ -245,10 +281,10 @@ $APP14_PHOTOSHOP_IDENTIFIER	= 'Adobe';
      0x84f0 => 'IT8CMYK_Equivalent',          # x [ANSI IT8 TIFF/IT]
      0x85b8 => 'FrameCount',                  # x [Texas Instruments]
      0x8649 => 'Photoshop',                   # x [Adobe] for Photoshop
-     $APP1_IFD0_SUBIFD_TAG => 'ExifOffset',   # D mandatory     optional(?)
+     0x8769 => 'ExifOffset',                  # D mandatory     optional(?)
      0x8773 => 'ICC_Profile',                 # x [Adobe ?]
      0x87be => 'JBIG_Options',                # x [Pixel Magic]
-     $APP1_IFD0_GPSINFO_TAG => 'GPSInfo',     # D optional              (?)
+     0x8825 => 'GPSInfo',                     # D optional              (?)
      0x885c => 'FaxRecvParams',               # x [SGI]
      0x885d => 'FaxSubAddress',               # x [SGI]
      0x885e => 'FaxRecvTime',                 # x [SGI]
@@ -256,14 +292,12 @@ $APP14_PHOTOSHOP_IDENTIFIER	= 'Adobe';
      0x923f => 'StoNits',                     # x [SGI]
      0xc4a5 => 'PrintIM_Data',                # Epson PIM tag (ref. ?)
      0xffff => 'DCS_HueShiftValues',          # x [Eastman Kodak]
-     SubIFD => \%HASH_APP1_SUBIFD,            # Exif private tags
-     GPS    => \%HASH_APP1_GPS,               # GPS tags
      );
 
 # Tags used for ICC data in APP2 (they are 4 bytes strings, so
 # I prefer to write the string and then convert it).
 sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
-%HASH_APP2_ICC =
+our %HASH_APP2_ICC =
     (str2hex('A2B0') => 'AT0B0Tag', 
      str2hex('A2B1') => 'AToB1Tag',
      str2hex('A2B2') => 'AToB2Tag',
@@ -304,7 +338,7 @@ sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
      );
 
 # Tags used by the 0-th IFD of an APP3 segment (reference ... ?)
-%HASH_APP3_IFD =
+our %HASH_APP3_IFD =
     (0xc350 => 'FilmProductCode',
      0xc351 => 'ImageSource',
      0xc352 => 'PrintArea',
@@ -327,10 +361,8 @@ sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
      0xc363 => 'ImageRotationStatus',
      0xc364 => 'RollGUID',
      0xc365 => 'APP3Version',
-     $APP3_IFD0_SPECIAL_TAG => 'SpecialEffectsIFD', # pointer to an IFD
-     $APP3_IFD0_BORDERS_TAG => 'BordersIFD',        # pointer to an IFD
-     Special => \%HASH_APP3_SPECIAL,                # Special effect tags
-     Borders => \%HASH_APP3_BORDERS,                # Border tags
+     0xc36e => 'SpecialEffectsIFD', # pointer to an IFD
+     0xc36f => 'BordersIFD',        # pointer to an IFD
      );
 
 # Tags used by the private EXIF region in IFD0
@@ -343,34 +375,17 @@ sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
 #   f: tags relating to date and time (EXIF 2.2)
 #   g: tags relating to picture taking conditions (EXIF 2.2) !
 #   h: other tags <see also a,b,c,d,e,f,g> (EXIF 2.2)
-%HASH_APP1_SUBIFD =
-    (#0x00ff => '?? SubfileType', # 2nd and/or 3rd subfile for RichTIFF
-     #0x010d => '?? DocumentName',
-     #0x010f => '?? Make',
-     #0x0110 => '?? Model',
-     #0x0131 => '?? Software',
-     #0x013b => '?? Artist',
-     #0x013d => '?? Predictor',
-     #0x0142 => '?? TileWidth',
-     #0x0143 => '?? TileLength',
-     #0x0144 => '?? TileOffsets',
-     #0x0145 => '?? TileByteCounts',
-     #0x014a => '?? SubIFDs',
-     #0x015b => '?? JPEGTables',
-     0x828d => 'CFARepeatPatternDim',         # unknown (Image::TIFF)
-     0x828e => 'CFAPattern',                  # unknown (Image::TIFF)
-     0x828f => 'BatteryLevel',                # unknown (Image::TIFF)
-     #0x8290 => '?? CameraInfoIFD', # pointer to an IFD
+our %HASH_APP1_SUBIFD =
+    (#0x8290 => '?? CameraInfoIFD', # pointer to an IFD
      0x829a => 'ExposureTime',                # g recommended
      0x829d => 'FNumber',                     # g optional
-     #0x8568 => '?? IPTC/NAA', # Kodak
      0x8822 => 'ExposureProgram',             # g optional
      0x8824 => 'SpectralSensitivity',         # g optional
      0x8827 => 'ISOSpeedRatings',             # g optional
      0x8828 => 'OECF',                        # g optional
-     #0x8829 => '?? Interlace',
-     #0x882a => '?? TimeZoneOffset',
-     #0x882b => '?? SelfTimerMode',
+     0x8829 => 'Interlace',                   # SHORT, 1, TIFF/EP
+     0x882a => 'TimeZoneOffset',              # SSHORT, 1or2, TIFF/EP
+     0x882b => 'SelfTimerMode',               # SHORT, 1, TIFF/EP
      0x9000 => 'ExifVersion',                 # a mandatory
      0x9003 => 'DateTimeOriginal',            # f optional
      0x9004 => 'DateTimeDigitized',           # f optional
@@ -386,13 +401,20 @@ sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
      0x9208 => 'LightSource',                 # g optional
      0x9209 => 'Flash',                       # g recommended
      0x920a => 'FocalLength',                 # g optional
-     #0x920d => '?? Noise',
-     #0x9211 => '?? ImageNumber',
-     #0x9212 => '?? SecurityClassification',
-     #0x9213 => '?? ImageHistory',
-     0x9214 => 'SubjectArea',                 # g optional
-     #0x9216 => '?? TIFF/EPStandardID',
-     $APP1_SubIFD_MAKERNOTE => 'MakerNote',   # d optional
+     0x920b => 'FlashEnergy',                 # RATIONAL, 1or2, TIFF/EP
+     0x920c => 'SpatialFrequencyResponse',    # UNDEFINED, N, TIFF/EP
+     0x920d => 'Noise',                       # UNDEFINED, N, TIFF/EP
+     0x920e => 'FocalPlaneXResolution',       # RATIONAL, 1, TIFF/EP
+     0x920f => 'FocalPlaneYResolution',       # RATIONAL, 1, TIFF/EP
+     0x9210 => 'FocalPlaneResolutionUnit',    # SHORT, 1, TIFF/EP
+     0x9211 => 'ImageNumber',                 # LONG, 1, TIFF/EP
+     0x9212 => 'SecurityClassification',      # ASCII, N, TIFF/EP
+     0x9213 => 'ImageHistory',                # ASCII, N, TIFF/EP
+     0x9214 => 'SubjectArea',                 # g optional, SubjLoc in TIFF/EP
+     0x9215 => 'ExposureIndex',               # RATIONAL, 1or2, TIFF/EP
+     0x9216 => 'TIFF/EPStandardID',           # BYTE, 4, TIFF/EP
+     0x9217 => 'SensingMethod',               # SHORT, 1, TIFF/EP
+     0x927c => 'MakerNote',                   # d optional
      0x9286 => 'UserComment',                 # d optional
      0x9290 => 'SubSecTime',                  # f optional
      0x9291 => 'SubSecTimeOriginal',          # f optional
@@ -402,8 +424,7 @@ sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
      0xa002 => 'PixelXDimension',             # c mandatory
      0xa003 => 'PixelYDimension',             # c mandatory
      0xa004 => 'RelatedSoundFile',            # e optional
-     $APP1_SubIFD_INTEROP_TAG => 
-               'InteroperabilityOffset',      # D optional
+     0xa005 => 'InteroperabilityOffset',      # D optional
      0xa20b => 'FlashEnergy',                 # g optional
      0xa20c => 'SpatialFrequencyResponse',    # g optional
      0xa20e => 'FocalPlaneXResolution',       # g optional
@@ -443,12 +464,10 @@ sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
      #0xfe56 => "?? Sharpness",
      #0xfe57 => "?? Smoothness",
      #0xfe58 => "?? MoireFilter",
-     Interop => \%HASH_APP1_INTEROP,          # Interoperability tags
-     MakerNote_OLYMPUS => \%HASH_APP1_MKN_OLYMPUS,
      );
 
 # Tags to be used in the Interoperability IFD (optional)
-%HASH_APP1_INTEROP =
+our %HASH_APP1_INTEROP =
     (0x0001 => 'InteroperabilityIndex',       # "R98"(main)or "THM"(thumb.)
      0x0002 => 'InteroperabilityVersion',     # "0100" means 1.00
      0x1000 => 'RelatedImageFileFormat',      # e.g. "Exif JPEG Ver. 2.1"
@@ -457,7 +476,7 @@ sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
      );
 
 # Special tags for OLYMPUS Maker Notes.
-%HASH_APP1_MKN_OLYMPUS =
+our %HASH_APP1_MKN_OLYMPUS =
     (0x0100 => 'JPEG_Thumbnail',
      0x0200 => 'SpecialMode',
      0x0201 => 'CompressionMode',
@@ -479,48 +498,64 @@ sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
      0x0f00 => 'Data',           # Unknown
      );
 
-# Tags used for GPS attributes
-%HASH_APP1_GPS =
-    (0x00 => 'Versionid',
-     0x01 => 'LatitudeRef',
-     0x02 => 'Latitude',
-     0x03 => 'LongitudeRef',
-     0x04 => 'Longitude',
-     0x05 => 'AltitudeRef',
-     0x06 => 'Altitude',
-     0x07 => 'TimeStamp',
-     0x08 => 'Satellites',
-     0x09 => 'Status',
-     0x0a => 'MeasureMode',
-     0x0b => 'DOP',
-     0x0c => 'SpeedRef',
-     0x0d => 'Speed',
-     0x0e => 'TrackRef',
-     0x0f => 'Track',
-     0x10 => 'ImgDirectionRef',
-     0x11 => 'ImgDirection',
-     0x12 => 'MapDatum',
-     0x13 => 'DestLatitudeRef',
-     0x14 => 'DestLatitude',
-     0x15 => 'DestLongitudeRef',
-     0x16 => 'DestLongitude',
-     0x17 => 'DestBearingRef',
-     0x18 => 'DestBearing',
-     0x19 => 'DestDistanceRef',
-     0x1a => 'DestDistance',
-     0x1b => 'ProcessingMethod',
-     0x1c => 'AreaInformation',
-     0x1d => 'DateStamp',
-     0x1e => 'Differential',
+#============================================================================#
+# See the "EXIF tags for the 0th IFD GPS directory" section in the           #
+# Image::MetaData::JPEG module perldoc page for further details on GPS data. #
+# -------------------------------------------------------------------------- #
+# Hash keys are numeric tags, here written in hexadecimal base.              #
+# Fields: 0 -> Tag name, 2 -> type, 3 -> count (0 means arbitrary count),    #
+#         4 -> regular expression to match                                   #
+#============================================================================#
+my $GPS_re_NS        = '(N|S)\000';            # latitude reference
+my $GPS_re_EW        = '(E|W)\000';            # longitude reference
+my $GPS_re_spdsref   = '(K|M|N)\000';          # speed or distance reference
+my $GPS_re_direref   = '(T|M)\000';            # directin reference
+my $GPS_re_Cstring   = '.*\000';               # a null terminated string
+my $GPS_re_string    = '[AJU\000].*';          # GPS "undefined" strings
+my $GPS_re_date      = '(19|2\d)\d{2}:(0\d|1[0-2]):([0-2]\d|3[01])\000';
+my $GPS_re_number    = '\d+';                  # a generic number
+##############################################################################
+our %HASH_GPS_GENERAL =
+    (0x00 => ['GPSVersionID',        $BYTE,      4, '.'               ],
+     0x01 => ['GPSLatitudeRef',      $ASCII,     2, $GPS_re_NS        ],
+     0x02 => ['GPSLatitude',         $RATIONAL,  3, 'latlong'         ],
+     0x03 => ['GPSLongitudeRef',     $ASCII,     2, $GPS_re_EW        ],
+     0x04 => ['GPSLongitude',        $RATIONAL,  3, 'latlong'         ],
+     0x05 => ['GPSAltitudeRef',      $BYTE,      1, '0|1'             ],
+     0x06 => ['GPSAltitude',         $RATIONAL,  1, '.*'              ],
+     0x07 => ['GPSTimeStamp',        $RATIONAL,  3, 'stupidtime'      ],
+     0x08 => ['GPSSatellites',       $ASCII, undef, '.*\000'          ],
+     0x09 => ['GPSStatus',           $ASCII,     2, 'A|V'             ],
+     0x0a => ['GPSMeasureMode',      $ASCII,     2, '2|3'             ],
+     0x0b => ['GPSDOP',              $RATIONAL,  1, $GPS_re_number    ],
+     0x0c => ['GPSSpeedRef',         $ASCII,     2, $GPS_re_spdsref   ],
+     0x0d => ['GPSSpeed',            $RATIONAL,  1, $GPS_re_number    ],
+     0x0e => ['GPSTrackRef',         $ASCII,     2, $GPS_re_direref   ],
+     0x0f => ['GPSTrack',            $RATIONAL,  1, 'direction'       ],
+     0x10 => ['GPSImgDirectionRef',  $ASCII,     2, $GPS_re_direref   ],
+     0x11 => ['GPSImgDirection',     $RATIONAL,  1, 'direction'       ],
+     0x12 => ['GPSMapDatum',         $ASCII, undef, $GPS_re_Cstring   ],
+     0x13 => ['GPSDestLatitudeRef',  $ASCII,     2, $GPS_re_NS        ],
+     0x14 => ['GPSDestLatitude',     $RATIONAL,  3, 'latlong'         ],
+     0x15 => ['GPSDestLongitudeRef', $ASCII,     2, $GPS_re_EW        ],
+     0x16 => ['GPSDestLongitude',    $RATIONAL,  3, 'latlong'         ],
+     0x17 => ['GPSDestBearingRef',   $ASCII,     2, $GPS_re_direref   ],
+     0x18 => ['GPSDestBearing',      $RATIONAL,  1, 'direction'       ],
+     0x19 => ['GPSDestDistanceRef',  $ASCII,     2, $GPS_re_spdsref   ],
+     0x1a => ['GPSDestDistance',     $RATIONAL,  1, $GPS_re_number    ],
+     0x1b => ['GPSProcessingMethod', $UNDEF, undef, $GPS_re_string    ],
+     0x1c => ['GPSAreaInformation',  $UNDEF, undef, $GPS_re_string    ],
+     0x1d => ['GPSDateStamp',        $ASCII,    11, $GPS_re_date      ],
+     0x1e => ['GPSDifferential',     $SHORT,     1, '0|1'             ],
      );
 
-%HASH_APP3_SPECIAL =
+our %HASH_APP3_SPECIAL =
     (0x0000 => 'Unknown 0',
      0x0001 => 'Unknown 1',
      0x0002 => 'Unknown 2',
      );
 
-%HASH_APP3_BORDERS =
+our %HASH_APP3_BORDERS =
     (0x0000 => 'Unknown 0',
      0x0001 => 'Unknown 1',
      0x0002 => 'Unknown 2',
@@ -529,20 +564,25 @@ sub str2hex { my $z = 0; ($z *= 256) += $_ for unpack "CCCC", $_[0]; $z; }
      0x0008 => 'Unknown 8',
      );
 
-# This hash specifies a lot of data about IPTC tags in JPEG files.
-# Hash keys are numeric tags, here written in decimal base. Fields:
-# 0 -> Tag name, 1 -> repeatability ('N' means non-repeatable)
-# 2,3 -> min and max length in bytes, 4 -> regular expression to match
-my $IPTC_re_word = '[^\000-\040\177]*';
-my $IPTC_re_line = '[^\000-\037\177]*'; # words + spaces
-my $IPTC_re_para = '[^\000-\011\013\014\016-\037\177]*'; # line + CR + LF
+#============================================================================#
+# See the "VALID TAGS FOR IPTC DATA" section in the Image::MetaData::JPEG    #
+# module perldoc page for further details on IPTC data.                      #
+# -------------------------------------------------------------------------- #
+# Hash keys are numeric tags, here written in decimal base.                  #
+# Fields: 0 -> Tag name, 1 -> repeatability ('N' means non-repeatable),      #
+#         2,3 -> min and max length, 4 -> regular expression to match.       #
+#============================================================================#
+my $IPTC_re_word = '^[^\000-\040\177]*$';                    # words
+my $IPTC_re_line = '^[^\000-\037\177]*$';                    # words + spaces
+my $IPTC_re_para = '^[^\000-\011\013\014\016-\037\177]*$';   # line + CR + LF
 my $IPTC_re_date = '[0-2]\d\d\d(0\d|1[0-2])([0-2]\d|3[01])'; # CCYYMMDD
-my $IPTC_re_HHMM = '([01]\d|2[0-3])[0-5]\d'; # HHMM
-my $IPTC_re_dura = $IPTC_re_HHMM.'[0-5]\d'; # HHMMSS
-my $IPTC_re_time = $IPTC_re_dura.'[\+-]'.$IPTC_re_HHMM; # HHMMSS+/-HHMM
-my $vchar        = '\040-\051\053-\071\073-\076\100-\176';
+my $IPTC_re_HHMM = '([01]\d|2[0-3])[0-5]\d';                 # HHMM
+my $IPTC_re_dura = $IPTC_re_HHMM.'[0-5]\d';                  # HHMMSS
+my $IPTC_re_time = $IPTC_re_dura.'[\+-]'.$IPTC_re_HHMM;      # HHMMSS+/-HHMM
+my $vchar        = '\040-\051\053-\071\073-\076\100-\176';   # (SubjectRef.)
 my $IPTC_re_sure ='['.$vchar.']{1,32}?:[01]\d{7}?(:['.$vchar.'\s]{0,64}?){3}?';
-%HASH_IPTC_GENERAL =
+##############################################################################
+our %HASH_IPTC_GENERAL =
     (0   => ['RecordVersion',             'N', 2,  2, 'binary'               ],
      3   => ['ObjectTypeReference',       'N', 3, 67, '\d{2}?:[\w\s]{0,64}?' ],
      4   => ['ObjectAttributeReference',  ' ', 4, 68, '\d{3}?:[\w\s]{0,64}?' ],
@@ -600,17 +640,10 @@ my $IPTC_re_sure ='['.$vchar.']{1,32}?:[01]\d{7}?(:['.$vchar.'\s]{0,64}?){3}?';
      200 => ['ObjDataPreviewFileFormat',  'N', 2,  2, 'invalid,binary'       ],
      201 => ['ObjDataPreviewFileFormatVer','N',2,  2, 'invalid,binary'       ],
      202 => ['ObjDataPreviewData',        'N', 1,256000,'invalid,binary'     ],
-     #231 => '??? SummaryString',
-     #232 => '??? EXIF_Info',
-     #240 => '??? Unknown',
      );
 
-# This record contains datasets (2:xx) with editorial information
-%HASH_IPTC_RECORD_2 = map { my $arrayref = $HASH_IPTC_GENERAL{$_};
-			    $_ => $$arrayref[0] } keys %HASH_IPTC_GENERAL;
-
 # esoteric tags for a Photoshop APP13 segment (not IPTC data)
-%HASH_PHOTOSHOP_TAGS =
+our %HASH_PHOTOSHOP_TAGS =
     (0x03e9 => 'MacintoshPrintInfo',         # Photoshop 4.0
      0x03ed => 'ResolutionInfo',
      0x03ee => 'AlphaChannelsNames',
@@ -657,18 +690,27 @@ my $IPTC_re_sure ='['.$vchar.']{1,32}?:[01]\d{7}?(:['.$vchar.'\s]{0,64}?){3}?';
      0x041d => 'AlphaIdentifiers',
      0x041e => 'URL_List',
      0x0421 => 'VersionInfo',
-     #0x0425 => '.. ????',
-     #0x0426 => '.. ????',
-     #0x0428 => '.. ????',
      0x0bb7 => 'ClippingPathName',
      0x2710 => 'PrintFlagsInfo',
      );
 # tags 0x07d0 --> 0x0bb6 are reserved for path information
-for (0x07d0..0x0bb6) { $HASH_PHOTOSHOP_TAGS{sprintf "PathInfo_%3x", $_} = $_; }
+for (0x07d0..0x0bb6) { $HASH_PHOTOSHOP_TAGS{$_} = sprintf "PathInfo_%3x", $_; }
+
+# lookup tables for properties' names from previously defined general tables
+our %HASH_IPTC_RECORD_2 = generate_lookup(\ %HASH_IPTC_GENERAL, 0);
+our %HASH_APP1_GPS      = generate_lookup(\ %HASH_GPS_GENERAL , 0);
+
+# some other lookup bifurcations
+$HASH_APP1_IFD{SubIFD}  = \%HASH_APP1_SUBIFD;     # Exif private tags
+$HASH_APP1_IFD{GPS}     = \%HASH_APP1_GPS;        # GPS tags
+$HASH_APP3_IFD{Special} = \%HASH_APP3_SPECIAL;    # Special effect tags
+$HASH_APP3_IFD{Borders} = \%HASH_APP3_BORDERS;    # Border tags
+$HASH_APP1_SUBIFD{Interop} = \%HASH_APP1_INTEROP; # Interoperability tags
+$HASH_APP1_SUBIFD{MakerNote_OLYMPUS} = \%HASH_APP1_MKN_OLYMPUS;
 
 # this is the main database for tag --> tagname translation
 # (records with a textual tag are not listed here)
-%JPEG_RECORD_NAME = 
+my %JPEG_RECORD_NAME = 
     (APP1  => {IFD0           => \%HASH_APP1_IFD,    # main image
 	       IFD1           => \%HASH_APP1_IFD, }, # thumbnail
      APP2  => {TagTable       => \%HASH_APP2_ICC, }, # ICC data
@@ -676,6 +718,70 @@ for (0x07d0..0x0bb6) { $HASH_PHOTOSHOP_TAGS{sprintf "PathInfo_%3x", $_} = $_; }
      APP13 => {IPTC_RECORD_2  => \%HASH_IPTC_RECORD_2,
 	       %HASH_PHOTOSHOP_TAGS },
      );
+
+###########################################################
+# This helper function returns record data from the       #
+# %JPEG_RECORD_NAME hash. The argument list is a list of  #
+# keys for exploring the variuous hash levels; e.g., if   #
+# the list is ('APP1', 'IFD0', 'GPS', 0x1e), the selected #
+# value is $JPEG_RECORD_NAME{APP1}{IFD0}{GPS}{0x1e}, i.e. #
+# the textual name of the GPS record with key = 0x1e in   #
+# the IFD0 in the APP1 segment. If, at some point during  #
+# the search, an argument fails (it is not a valid key)   #
+# or it is not defined, the search is interrupted, and    #
+# undef is returned. Note also that the return value can  #
+# be a string or a hash reference, depending on the hash  #
+# search depth. If the key lookup for the last argument   #
+# fails, a reverse lookup is run (i.e., the key corres-   #
+# ponding to the value equal to the last user argument is #
+# searched). If even this lookup fails, undef is returned.#
+########################################################### 
+sub JPEG_lookup {
+    # all searches start from here
+    my $lookup = \ %JPEG_RECORD_NAME;
+    # extract and save the last argument for special treatment
+    my $last = pop;
+    # refuse to work with $last undefined
+    return unless $last;
+    # consume the list of "normal" arguments: they must be successive
+    # keys for navigation in a multi-level hash. Interrupt the search
+    # as soon as an argument is undefined or $lookup is not a hash ref
+    for (@_) {
+	# return undef as soon as an argument is undefined
+	return undef unless $_;
+	# go one level deeper in the hash exploration
+	$lookup = $$lookup{$_};
+	# return undef if $lookup is no more a hash reference
+	return undef unless ref $lookup eq 'HASH'; }
+    # $lookup is a hash reference now. Return the value
+    # corresponding to $last (used as a key) if it exists.
+    return $$lookup{$last} if exists $$lookup{$last};
+    # if we are still here, scan the hash looking for a value equal to
+    # $last, and return its key. Avoid each %$lookup, since we could
+    # exit the loop before the end and I don't want to reset the
+    # iterator in that stupid manner.
+    for (keys %$lookup) { return $_ if $$lookup{$_} eq $last; }
+    # if we are still here, we have lost
+    return undef;
+};
+
+# complications due to APP1/APP3 structure
+our %IFD_SUBDIRS =
+    (JPEG_lookup('APP1','IFD0','GPSInfo')            => 'IFD0@GPS',
+     JPEG_lookup('APP1','IFD0','ExifOffset')         => 'IFD0@SubIFD',
+     JPEG_lookup('APP1','IFD0','SubIFD','InteroperabilityOffset')
+                                                     => 'IFD0@SubIFD@Interop',
+#    JPEG_lookup('APP1','IFD0','SubIFD','MakerNote') =>'IFD0@SubIFD@MakerNote',
+     JPEG_lookup('APP3','IFD0','BordersIFD')         => 'IFD0@Borders',
+     JPEG_lookup('APP3','IFD0','SpecialEffectsIFD')  => 'IFD0@Special',
+     );
+
+# parameters which must be initialised with JPEG_lookup
+our $APP1_TH_TYPE  = JPEG_lookup('APP1','IFD1','Compression');
+our $THJPEG_OFFSET = JPEG_lookup('APP1','IFD1','JPEGInterchangeFormat');
+our $THJPEG_LENGTH = JPEG_lookup('APP1','IFD1','JPEGInterchangeFormatLength');
+our $THTIFF_OFFSET = JPEG_lookup('APP1','IFD1','StripOffsets');
+our $THTIFF_LENGTH = JPEG_lookup('APP1','IFD1','StripOffsets');
 
 # successful package load
 1;

@@ -12,7 +12,7 @@ my ($lines, $image, $image_2, @desc, @desc_2, $h1, $h2, $status);
 
 #=======================================
 diag "Testing JPEG object generic methods";
-plan tests => 16;
+plan tests => 18;
 #=======================================
 
 #########################
@@ -29,7 +29,7 @@ open(ZZ, $tdata); @desc_2 = map { chomp; s/$ref//; $_ } <ZZ>; close(ZZ);
 is_deeply( \@desc, \@desc_2, "Detailed description check");
 
 #########################
-open(my $handle, "<", $tphoto);
+open(my $handle, "<", $tphoto); binmode($handle); # for Windows
 read($handle, my $buffer, -s $tphoto); close($handle);
 $image_2 = new $cname(\ $buffer);
 @desc_2 = map { s/$ref//; $_ } split /\n/, $image_2->get_description();
@@ -43,17 +43,25 @@ isnt( $h1, $h2, "Descriptions differing (header)" );
 is_deeply( \@desc, \@desc_2, "The two descriptions are the same" );
 
 #########################
+"dddxx" =~ /dddxx/; # test stupid Perl behaviour with m//
+is( scalar $image->get_segments(), 13, "Get all segments (undef string)" );
+
+#########################
+"dddxx" =~ /dddxx/; # test stupid Perl behaviour with m//
+is( scalar $image->get_segments(""), 13, "Get all segments (empty string)" );
+
+#########################
 is( $image->get_segments("^S"), 3, "Segments beginning with S" );
 
 #########################
-is_deeply( [$image->get_segments("^S", "INDEXES")], [0, 5, 7],
+is_deeply( [$image->get_segments("^S", "INDEXES")], [0, 7, 10],
 	   "Segments through their indexes" );
 
 #########################
-is_deeply( [$image->get_dimensions()], [2160, 1440], "Image dimensions" );
+is_deeply( [$image->get_dimensions()], [432, 288], "Image dimensions" );
 
 #########################
-is( $image->find_new_app_segment_position(), 5, "New APPx position" );
+is( $image->find_new_app_segment_position(), 7, "New APPx position" );
 
 #########################
 ok( $image->save($cphoto), "Exit status of save()" );

@@ -4,7 +4,7 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
-use Image::MetaData::JPEG::Tables;
+use Image::MetaData::JPEG::Tables qw(:Lookups);
 use Image::MetaData::JPEG::Record;
 no  integer;
 use strict;
@@ -100,8 +100,8 @@ sub dump_TIFF_header {
     my $endianness = $this->search_record('Endianness')->get();
     my $signature  = $this->search_record('Signature' )->get($endianness);
     # the offset of the 0th IFD must in principle be recalculated,
-    # although chances are that it corresponds to the value of the
-    # 'IFD0_Pointer' record (which should be 8).
+    # although chances are that it corresponds to the default value (8);
+    # remember that the 'IFD0_Pointer' record isn't any more stored.
     my $ifd0_len  = (length $endianness) + (length $signature) + 4;
     # create a string with the identifier and the TIFF header
     my $ifd0_link = pack $endianness eq $BIG_ENDIAN ? "N" : "V", $ifd0_len;
@@ -113,10 +113,14 @@ sub dump_TIFF_header {
 ###########################################################
 # This is the core of the Exif APP1 dumping method. It    #
 # takes care to dump a whole IFD, including a special     #
-# treatement for tags holding an offset, which is now     #
-# most probably invalid. No action is taken unless there  #
-# is already a directory for this IFD in the structured   #
-# data area of the segment.                               #
+# treatement for thumbnail images. No action is taken     #
+# unless there is already a directory for this IFD in the #
+# structured data area of the segment.                    #
+# ------------------------------------------------------- #
+# Special treatement for tags holding an IFD offset;      #
+# these tags are regenerated on the fly (since they are   #
+# no more stored) and their value is recalculated  and    #
+# written to the raw data area.                           #
 ###########################################################
 sub dump_ifd {
     my ($this, $dirnames, $offset) = @_;
@@ -127,19 +131,27 @@ sub dump_ifd {
     my $dirref = undef; for (split /@/, $dirnames) {
 	return \ "" unless $dirref = $this->search_record($_, $dirref);
 	return \ "" unless $dirref = $dirref->get_value(); }
-    # retrieve the record list for this IFD, then eliminate the
-    # REFERENCE records (added by the parser routine, they were
-    # not in the JPEG file) and sort the remaining records with
-    # respect to their tags (numeric). This is not, strictly
-    # speaking mandatory, but the file looks more polished after
-    # this. $short and $long are two useful format strings
-    # correctly taking into account the IFD endianness. $format
-    # is a format string for packing an Interoperability array
-    my @records = sort { $a->{key} <=> $b->{key} }
-                         grep { $_->{type} != $REFERENCE } @$dirref;
+    # $short and $long are two useful format strings correctly taking
+    # into account the IFD endianness. $format is a format string for
+    # packing an Interoperability array
     my $short   = $this->{endianness} eq $BIG_ENDIAN ? 'n' : 'v';
     my $long    = $this->{endianness} eq $BIG_ENDIAN ? 'N' : 'V';
     my $format  = $short. $short . $long;
+    # retrieve the record list for this IFD, then eliminate the REFERENCE
+    # records (added by the parser routine, they were not in the JPEG file).
+    my @records = grep { $_->{type} != $REFERENCE } @$dirref;
+    # for each reference record, regenerate the corresponding offset record
+    # (which can be retraced from the "extra" field) and insert it into the
+    # @records list with a dummy value (zero). We can safely use $LONG as
+    # record type (new-style offsets).
+    push @records, map {
+	my $nt = JPEG_lookup($this->{name}, split(/@/, $dirnames), $_->{extra});
+	new Image::MetaData::JPEG::Record ($nt, $LONG, \ pack($long, 0)) }
+    grep { $_->{type} == $REFERENCE } @$dirref;
+    # sort the accumulated records with respect to their tags (numeric).
+    # This is not, strictly speaking mandatory, but the file looks more
+    # polished after this (am I introducing any gratuitous incompatibility?)
+    @records = sort { $a->{key} <=> $b->{key} } @records;
     # the IFD data area is to be initialised with two bytes specifying
     # the number of Interoperability arrays. Data not fitting an
     # Interop array will be saved in $extra; $remote should point 
@@ -155,12 +167,12 @@ sub dump_ifd {
     if ($dirnames eq 'IFD1' &&
 	(my $th_record = $this->search_record('ThumbnailData'))) {
 	(undef, undef, undef, my $tdataref) = $th_record->get();
-	for ($APP1_THTIFF_LENGTH, $APP1_THJPEG_LENGTH) {
+	for ($THTIFF_LENGTH, $THJPEG_LENGTH) {
 	    my $th_len = $this->search_record($_, $dirref);
 	    $th_len->set_value(length $$tdataref) if $th_len; } }
     # the following tags can be found only in IFD1 in APP1, and concern
     # the thumbnail location. They must be dealt with in a special way.
-    my %th_tags = ($APP1_THTIFF_OFFSET => undef, $APP1_THJPEG_OFFSET => undef);
+    my %th_tags = ($THTIFF_OFFSET => undef, $THJPEG_OFFSET => undef);
     # loop on all selected records and dump them
     for my $record (@records) {
 	# extract all necessary information about this

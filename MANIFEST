@@ -5,12 +5,14 @@ Makefile.PL
 MANIFEST
 README
 references
+t/JPEG_0_records.t
 t/JPEG_1_constructors.t
 t/JPEG_2_methods.t
 t/JPEG_3_comments.t
 t/JPEG_4_IPTC.t
 t/JPEG_4b_IPTC.t
 t/JPEG_5_exif.t
+t/JPEG_5b_exif.t
 t/test_photo.desc
 t/test_photo.jpg
 lib/Image/MetaData/JPEG.pm
@@ -18,7 +20,7 @@ lib/Image/MetaData/JPEG.pod
 lib/Image/MetaData/JPEG/JPEG_various.pl
 lib/Image/MetaData/JPEG/JPEG_app13.pl
 lib/Image/MetaData/JPEG/JPEG_comments.pl
-lib/Image/MetaData/JPEG/JPEG_exif.pl
+lib/Image/MetaData/JPEG/JPEG_app1_exif.pl
 lib/Image/MetaData/JPEG/Record.pm
 lib/Image/MetaData/JPEG/Segment_dumpers.pl
 lib/Image/MetaData/JPEG/Segment_parsers.pl

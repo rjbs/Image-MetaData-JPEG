@@ -9,7 +9,7 @@ my ($image, $hash, $bighash);
 
 #=======================================
 diag "Testing APP13 IPTC format checker";
-plan tests => 18;
+plan tests => 19;
 #=======================================
 
 #########################
@@ -82,6 +82,10 @@ $hash = $image->set_IPTC_data({ 10 => 9 }); # Urgency
 is( scalar keys %$hash, 1, "invalid regex (3)" );
 
 #########################
+$hash = $image->set_IPTC_data({ 120 => "uno\fdue" }); # Caption/Abstract
+is( scalar keys %$hash, 1, "form feed not allowed in 'paragraph'" );
+
+#########################
 $bighash = {
     'RecordVersion'               => "\000\002",
     'ObjectTypeReference'         => "23:ciao a te",
@@ -99,7 +103,7 @@ $bighash = {
     'ActionAdvised'               => "03",
     'ObjectCycle'                 => 'p',
     'Country/PrimaryLocationCode' => "ITA",
-    'Caption/Abstract'            => "line 1\nline 2\n\fline 3",
+    'Caption/Abstract'            => "line 1\nline 2\n\rline 3",
     'RasterizedCaption'           => "\013\000\001\135\377\254",
     'ImageType'                   => "9R",
     'ImageOrientation'            => 'L',
