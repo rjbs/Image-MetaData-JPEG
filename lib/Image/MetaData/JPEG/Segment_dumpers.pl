@@ -1,10 +1,12 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
-use Image::MetaData::JPEG::Tables qw(:Lookups);
+use Image::MetaData::JPEG::Tables qw(:RecordTypes :Endianness :Lookups
+				     :TagsAPP0 :TagsAPP1  :TagsAPP2
+				     :TagsAPP3 :TagsAPP13 :TagsAPP14);
 use Image::MetaData::JPEG::Record;
 no  integer;
 use strict;
@@ -44,9 +46,9 @@ sub dump_app1 {
     # Otherwise, look for a 'Namespace' record; chances
     # are this is an Adobe XMP segment
     my $namespace = $this->search_record_value('Namespace');
-    die "Dumping XMP APP1" if defined $namespace;
+    $this->die('Dumping XMP APP1') if defined $namespace;
     # Otherwise, we have a problem
-    die "APP1 segment dump not possible";
+    $this->die('Segment dump not possible');
 }
 
 ###########################################################
@@ -55,55 +57,53 @@ sub dump_app1 {
 ###########################################################
 sub dump_app1_exif {
     my ($this) = @_;
-    # dump the identifier and the TIFF header. Note that the offset
-    # returned by dump_TIFF_header is the current position in the newly
-    # written data area AFTER the identifier (i.e., the base is the base
+    # dump the identifier (not part of the TIFF header)
+    my $identifier = $this->search_record('Identifier')->get();
+    $this->set_data($identifier, 'OVERWRITE');
+    # dump the TIFF header; note that the offset returned by
+    # dump_TIFF_header is the current position in the newly written
+    # data area AFTER the identifier (i.e., the base is the base
     # of the TIFF header), so it does not start from zero but from the
     # value of $ifd0_link. Be aware that its meaning is slightly
     # different from $offset in the parser.
     my ($header, $offset, $endianness) = $this->dump_TIFF_header();
-    $this->set_data($header, "OVERWRITE");
-    # set the current endianness to what we have found.
-    # Remember to reset it at the end of the method!!!
-    my $old_endianness = $this->{endianness};
-    $this->{endianness} = $endianness;
+    $this->set_data($header);
+    # locally set the current endianness to what we have found.
+    local $this->{endianness} = $endianness;
     # dump all the records of the 0th IFD, and update $offset to
     # point after the end of the current data area (with respect
     # to the TIFF header base). This must be done even if the IFD
     # itself is empty (in order to find the next one).
-    $offset += $this->set_data($this->dump_ifd('IFD0', $offset));
+    my $ifd1_link = defined $this->search_record('IFD1') ? 0 : 1;
+    $offset += $this->set_data($this->dump_ifd('IFD0', $offset, $ifd1_link));
     # same thing with the 1st IFD. We don't have to worry if this
     # IFD is not there, because dump_ifd tests for this case.
-    $offset += $this->set_data($this->dump_ifd('IFD1', $offset));
+    $offset += $this->set_data($this->dump_ifd('IFD1', $offset, 1));
     # if there is thumbnail data in the main directory of this
     # segment, it is time to dump it. Use the reference, because
     # this can be quite large (some tens of kilobytes ....)
     if (my $th_record = $this->search_record('ThumbnailData')) {
 	(undef, undef, undef, my $tdataref) = $th_record->get();
 	$this->set_data($tdataref); }
-    # reset the current endianness to its old value
-    $this->{endianness} = $old_endianness;
 }
 
 ###########################################################
-# This method reconstructs a TIFF header (including the   #
-# prepended identifier) and returns a list with all the   #
-# relevant values. Nothing is written to the data area.   #
+# This method reconstructs a TIFF header and returns a    #
+# list with all the relevant values. Nothing is written   #
+# to the data area. Records are searched for in the       #
+# directory specified by the second argument.             #
 ###########################################################
 sub dump_TIFF_header {
-    my ($this) = @_;
-    # retrieve the identifier, endianness, and signature. It is not
-    # worth setting the temporary segment endianness here, do it later.
-    my $identifier = $this->search_record('Identifier')->get();
-    my $endianness = $this->search_record('Endianness')->get();
-    my $signature  = $this->search_record('Signature' )->get($endianness);
-    # the offset of the 0th IFD must in principle be recalculated,
-    # although chances are that it corresponds to the default value (8);
-    # remember that the 'IFD0_Pointer' record isn't any more stored.
-    my $ifd0_len  = (length $endianness) + (length $signature) + 4;
-    # create a string with the identifier and the TIFF header
+    my ($this, $dirref) = @_;
+    # retrieve the endianness, and signature. It is not worth
+    # setting the temporary segment endianness here, do it later.
+    my $endianness=$this->search_record('Endianness',$dirref)->get();
+    my $signature =$this->search_record('Signature',$dirref)->get($endianness);
+    # create a string containing the TIFF header (we always
+    # choose the offset of the 0th IFD must to be 8 here).
+    my $ifd0_len  = 8;
     my $ifd0_link = pack $endianness eq $BIG_ENDIAN ? "N" : "V", $ifd0_len;
-    my $header = $identifier . $endianness . $signature . $ifd0_link;
+    my $header = $endianness . $signature . $ifd0_link;
     # return all relevant values in a list
     return ($header, $ifd0_len, $endianness);
 }
@@ -111,17 +111,24 @@ sub dump_TIFF_header {
 ###########################################################
 # This is the core of the Exif APP1 dumping method. It    #
 # takes care to dump a whole IFD, including a special     #
-# treatement for thumbnail images. No action is taken     #
-# unless there is already a directory for this IFD in the #
-# structured data area of the segment.                    #
+# treatement for thumbnails and makernotes. No action is  #
+# taken unless there is already a directory for this IFD  #
+# in the structured data area of the segment.             #
 # ------------------------------------------------------- #
-# Special treatement for tags holding an IFD offset;      #
-# these tags are regenerated on the fly (since they are   #
-# no more stored) and their value is recalculated  and    #
-# written to the raw data area.                           #
+# Special treatement for tags holding an IFD offset (this #
+# includes makernotes); these tags are regenerated on the #
+# fly (since they are no more stored) and their value is  #
+# recalculated and written to the raw data area.          #
+# ------------------------------------------------------- #
+# New argument ($next), which specifies how the next_link #
+# pointer is to be treated: '0' --> the pointer is dumped #
+# with a non zero value; '1' --> the pointer is dumped    #
+# with value set to zero; '2' -->: the pointer is ignored #
 ###########################################################
 sub dump_ifd {
-    my ($this, $dirnames, $offset) = @_;
+    my ($this, $dirnames, $offset, $next) = @_;
+    # set the next link flag to zero if it is undefined
+    $next = 0 unless defined $next;
     # retrieve the appropriate record list (specified by a '@' separated
     # list of dir names in $dirnames to be interpreted in sequence). If
     # this fails, return immediately with a reference to an empty string
@@ -136,27 +143,27 @@ sub dump_ifd {
     # retrieve the record list for this IFD, then eliminate the REFERENCE
     # records (added by the parser routine, they were not in the JPEG file).
     my @records = grep { $_->{type} != $REFERENCE } @$dirref;
-    # for each reference record, regenerate the corresponding offset record
-    # (which can be retraced from the "extra" field) and insert it into the
-    # @records list with a dummy value (zero). We can safely use $LONG as
-    # record type (new-style offsets).
+    # for each reference record with a non-undef extra field, regenerate
+    # the corresponding offset record (which can be retraced from the
+    # "extra" field) and insert it into the @records list with a dummy
+    # value (0). We can safely use $LONG as record type (new-style offsets).
     push @records, map {
 	my $nt = JPEG_lookup($this->{name}, $dirnames, $_->{extra});
 	new Image::MetaData::JPEG::Record($nt, $LONG, \ pack($long, 0)) }
-    grep { $_->{type} == $REFERENCE } @$dirref;
+    grep { $_->{type} == $REFERENCE && $_->{extra} } @$dirref;
     # sort the accumulated records with respect to their tags (numeric).
     # This is not, strictly speaking mandatory, but the file looks more
     # polished after this (am I introducing any gratuitous incompatibility?)
     @records = sort { $a->{key} <=> $b->{key} } @records;
     # the IFD data area is to be initialised with two bytes specifying
-    # the number of Interoperability arrays. Data not fitting an
-    # Interop array will be saved in $extra; $remote should point 
-    # to its beginning (from TIFF header base), so we must skip 12
-    # bytes for each Interop. array, 2 bytes for the initial count
-    # and 4 bytes for the "next IFD" link.
+    # the number of Interoperability arrays.
     my $ifd_content = pack $short, scalar @records;
-    my $remote = $offset + 2 + 12 * (scalar @records) + 4;
-    my $extra  = "";
+    # Data areas too large for the Interop array will be saved in $extra;
+    # $remote should point to its beginning (from TIFF header base), so we
+    # must skip 12 bytes for each Interop. array, 2 bytes for the initial
+    # count (and 4 bytes for the next IFD link, unless $next is two).
+    my ($remote, $extra) = ($offset + 2 + 12*@records, '');
+    $remote += 4 unless $next == 2;
     # managing the thumbnail is not trivial. We want to be sure that
     # its declared size corresponds to the reality and correct if
     # this is not the case (is this a stupid idea?)
@@ -183,44 +190,48 @@ sub dump_ifd {
 	# parsing, it must be the data length in this case).
 	my $length = length $$dataref;
 	$count = $length if $record->get_category() eq 'S';
-	# the interoperability array starts with tag, type and count;
-	# additional data could be stored in another place.
-	$ifd_content .= pack $format, $tag, $type, $count;
-	# if this Interop array specifies the thumbnail location, it needs
+	# the last four bytes in an interoperability array are either
+	# data or an address; prepare a variable for holding this value
+	my $record_end = '';
+	# if this IFD1 record specifies the thumbnail location, it needs
 	# a special treatment, since we cannot yet know where the thumbnail
 	# will be located. Write a bogus offset now and overwrite it later.
-	if (exists $th_tags{$tag}) {
-	    $th_tags{$tag} = length $ifd_content;
-	    $ifd_content .= "\000\000\000\000"; }
+	if ($dirnames eq 'IFD1' && exists $th_tags{$tag}) {
+	    $th_tags{$tag} = 8 + length $ifd_content;
+	    $record_end = "\000\000\000\000"; }
 	# if this Interop array is known to correspond to a subdirectory
 	# (use %$mapping for this), the subdirectory content is calculated
 	# on the fly, and stored in this IFD's remote data area. Its offset
 	# instead is saved at the end of the Interoperability array.
 	elsif ($mapping && exists $$mapping{$tag}) {
-	    $ifd_content .= pack $long, $remote;
-	    my $extended_dirnames = join '@', $dirnames, $$mapping{$tag};
-	    my $subifd    = $this->dump_ifd($extended_dirnames, $remote);
-	    $extra  .= $$subifd;
-	    $remote += length $$subifd; }
+	    my $is_makernote = ($tag =~ $MAKERNOTE_TAG);
+	    my $extended_dirnames = $dirnames.'@'.$$mapping{$tag};
+	    # MakerNotes require a special treatment, including rewriting
+	    # type and count (one LONG is really many UNDEF bytes); other
+	    # subIFD's are written by a recursive dump_ifd (next link is 0).
+	    my $subifd = $is_makernote ?
+		$this->dump_makernote($extended_dirnames, $remote) :
+		$this->dump_ifd($extended_dirnames, $remote, 1);
+	    $type = $UNDEF, $count = length($$subifd) if $is_makernote;
+	    $record_end = pack $long, $remote;
+	    $extra .= $$subifd; $remote += length $$subifd; }
 	# if the data length is not larger than four bytes, we are ok.
 	# $$dataref is simply appended (with padding up to 4 bytes,
 	# AFTER $$dataref, independently of the IFD endianness).
-	elsif ($length <= 4) {
-	    $ifd_content .= $$dataref;
-	    $ifd_content .= "\000" x (4 - $length); }
+	elsif ($length <= 4) { $record_end = $$dataref . "\000"x(4-$length); }
 	# if $$dataref is too big, it must be packed in the $extra
 	# section, and its pointer appended here. Remember to update
 	# $remote for the next record of this type.
-	else {
-	    $ifd_content .= pack $long, $remote;
-	    $remote += $length;
-	    $extra  .= $$dataref; }
-    }
-    # after the Interop. arrays there can be a link to the next IFD;
-    # this takes 4 bytes (equal to 0 if there is no next IFD). We need
-    # it really only at the end of IFD0 to point to IFD1 if present.
-    my $need_next_link = $dirnames eq 'IFD0' && $this->search_record('IFD1');
-    $ifd_content .= pack $long, ($need_next_link ? $remote : 0);
+	else { $record_end = pack $long, $remote;
+	       $remote += $length; $extra .= $$dataref; }
+	# the interoperability array starts with tag, type and count,
+	# followed by $record_end (4 bytes): dump into the ifd data area
+	$ifd_content .= (pack $format, $tag, $type, $count) . $record_end; }
+    # after the Interop. arrays there can be a link to the next IFD
+    # (this takes 4 bytes). $next = 0 --> write the next IFD offset,
+    # = 1 --> write zero, 2 --> do not write these four bytes.
+    $ifd_content .= pack $long, $remote if $next == 0;
+    $ifd_content .= pack $long, 0       if $next == 1;
     # then, we save the remote data area
     $ifd_content .= $extra;
     # if the thumbnail offset tags were found during the scan, we
@@ -230,11 +241,70 @@ sub dump_ifd {
 	my $tag_record = $this->search_record($_, $dirref);
 	$tag_record->set_value($remote);
 	my $new_offset = $tag_record->get($this->{endianness});
-	substr($ifd_content, $overwrite, length $new_offset) = $new_offset;
-    }
+	substr($ifd_content, $overwrite, length $new_offset) = $new_offset; }
     # return a reference to the scalar which holds the binary dump
     # of this IFD (to be saved in the caller routine, I think).
     return \$ifd_content;
+}
+
+###########################################################
+# This routine dumps all kinds of makernotes. Have a look #
+# at parse_makernote() for further details.               #
+###########################################################
+sub dump_makernote {
+    my ($this, $dirnames, $offset) = @_;
+    # look for a MakerNote subdirectory beginning with $dirnames: the
+    # actual name has the format appended, e.g., MakerNoteData_Canon.
+    $dirnames =~ s/(.*@|)([^@]*)/$1/;
+    my $dirref = $this->search_record_value($dirnames);
+    $dirnames .= $_->{key}, $dirref = $_->get_value(), last
+	for (grep{$_->{key}=~/^$2/} @$dirref);
+    # Also look for the subdir with special information.
+    my $spcref = $this->search_record_value($dirnames.'@special');
+    # entering here without the dir and its subdir being present is an error
+    $this->die('MakerNote subdirs not found') unless $dirref && $spcref;
+    # read all MakerNote special values (added by the parser routine)
+    my ($data, $signature, $endianness, $format, $error) =
+	map { $this->search_record_value($_, $spcref) }
+            ('ORIGINAL', 'SIGNATURE', 'ENDIANNESS', 'FORMAT', 'ERROR');
+    # die and debug if the format record is not present
+    $this->die('FORMAT not found') unless $format;
+    # if the format is unknown or there was an error at parse time, it
+    # is wiser to return the original, unparsed content of the MakerNote
+    if ($format =~ /unknown/ || defined $error) {
+	$this->die('ORIGINAL data not found') unless $data; return \$data; };
+    # also extract the property table for this MakerNote format
+    my $hash = $$HASH_MAKERNOTES{$format};
+    # now, die if the signature or endianness is still undefined
+    $this->die('Properties not found')unless defined $signature && $endianness;
+    # in general, the MakerNote's next-IFD link is zero, but some
+    # MakerNotes do not even have these four bytes: prepare the flag
+    my $next_flag = exists $$hash{nonext} ? 2 : 1;
+    # in general, MakerNote's offsets are computed from the APP1 segment
+    # TIFF base; however, some formats compute offsets from the beginning
+    # of the MakerNote itself: setup the offset base as required.
+    $offset = length($signature) + (exists $$hash{mkntstart} ? 0 : $offset);
+    # initialise the data area with the detected signature
+    $data = $signature;
+    # some MakerNotes have a TIFF header on their own, freeing them
+    # from the relocation problem; values from this header overwrite
+    # the previously assigned values; records are saved in $mknt_dir.
+    if (exists $$hash{mkntTIFF}) {
+	my ($TIFF_header, $TIFF_offset, $TIFF_endianness) 
+	    = $this->dump_TIFF_header($spcref);
+	$this->die('Endianness mismatch') if $endianness ne $TIFF_endianness;
+	$data .= $TIFF_header; $offset = $TIFF_offset; }
+    # Unstructured case: the content of the MakerNote is simply
+    # a sequence of bytes, which must be encoded using $$hash{tags}
+    if (exists $$hash{nonIFD}) {
+	$data .= $this->search_record($$_[0], $dirref)->get($endianness)
+	    for map {$$hash{tags}{$_}} sort {$a <=> $b} keys %{$$hash{tags}}; }
+    # Structured case: the content of the MakerNote can be dumped
+    # with dump_ifd (change locally the endianness value).
+    else { local $this->{endianness} = $endianness;
+	   $data .= ${$this->dump_ifd($dirnames, $offset, $next_flag)} };
+    # return the MakerNote as a binary object
+    return \$data;
 }
 
 ###########################################################
@@ -246,11 +316,15 @@ sub dump_app13 {
     my ($this) = @_;
     # get a reference to the segment record list
     my $records = $this->{records};
-    # the segment always starts with the Adobe identifier
-    my $id = $this->search_record_value('Identifier');
-    die "Malformed APP13 segment (Identifier)"
-	unless $id && $id eq $APP13_PHOTOSHOP_IDENTIFIER;
-    $this->set_data($APP13_PHOTOSHOP_IDENTIFIER, "OVERWRITE");
+    # the segment always starts with an Adobe identifier
+    $this->die('Identifier not found') unless
+	my $id = $this->search_record_value('Identifier');
+    $this->set_data($id, "OVERWRITE");
+    # version 2.5 (old) is followed by eight undocumented bytes
+    # (maybe resolution info): output them if present and valid
+    my $rec = $this->search_record('Resolution');
+    $this->die('Header problem') unless (defined $rec) eq ($id =~ /2\.5/);
+    $this->set_data($rec->get_value()) if $rec;
     # check if subdirectories are present or not
     my $iptc_records = $this->search_record_value($APP13_IPTC_DIRNAME);
     my $shop_records = $this->search_record_value($APP13_PHOTOSHOP_DIRNAME);

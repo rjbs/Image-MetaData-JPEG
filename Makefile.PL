@@ -1,3 +1,8 @@
+###########################################################
+# A Perl package for showing/modifying JPEG (meta)data.   #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
+# See the COPYING and LICENSE files for license terms.    #
+###########################################################
 #use 5.008004;
 use ExtUtils::MakeMaker;
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence

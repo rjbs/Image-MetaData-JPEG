@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 
@@ -70,6 +70,18 @@ Segments with a known format are then parsed, and their content can be
 accessed in a structured way for display. Some of them can even be modified
 and then rewritten to disk.
 
+=over
+
+=item $JPEG::show_warnings
+
+This package variable must be used to inhibit the printing of warnings: if
+it is false, warnings are silently ignored. Otherwise, warning messages
+come with a detailed back-trace and description of the warning location.
+
+    $Image::MetaData::JPEG::show_warnings = undef;
+
+=back
+
 =head2 Managing a JPEG structure object
 
 =over
@@ -110,6 +122,14 @@ you cannot rebuild the file afterwards, so this is only for getting
 information fast, e.g., when doing a directory scan.
 
     my $file = new Image::MetaData::JPEG('a_file.jpg', 'COM', 'FASTREADONLY');
+
+Nota bene: an old version of "Arles Image Web Page Creator" had a bug which
+caused the application to generate JPEG's with illegal comment segments,
+reportedly due to a bug in the Intel JPEG library the developers used at
+that time (these segments had to 0x00 bytes appended). It is true that a
+JPEG file with garbage between segments is to be considered invalid, but
+some libraries like IJG's try to forgive, so this module tries to forgive
+too, if the amount of garbage isn't too large (only a warning is printed).
 
 =item JPEG::Error
 
@@ -157,7 +177,6 @@ in general invalidates the file. As a special case, if $regex ==
 =item JPEG::insert_segments
 
 [arguments: C<($segref, $pos, $overwrite)>]
-
 Inserting a Segment into the picture's segment list is done with the
 I<insert_segments> method. This method inserts the segments referenced by
 $segref into the current list of segments at position $pos. If $segref is
@@ -190,16 +209,21 @@ I<get_dimensions> from the I<Start of Frame> (SOF*) Segment:
 
 =item JPEG::find_new_app_segment_position
 
-[arguments: none]
+[arguments: C<($name)>]
 If a new comment or application Segment is to be added to the file, the
 module provides a standard algorithm for deciding the location of the new
-Segment in the I<find_new_app_segment_position> method. If a DHP Segment is
-present, the method returns its position; otherwise, it tries the same with
-SOF Segments; otherwise, it selects the position immediately after the last
-application or comment Segment. If even this fails, it returns the position
-immediately after the SOI Segment (i.e., 1).
+Segment, in the I<find_new_app_segment_position> method. The argument is
+the name of the Segment to be inserted (it defaults to 'COM', producing a
+warning). The position is chosen immediately before the first (or after the
+last) element of some list, provided that the list is not empty, otherwise
+the next list is taken into account: 1) [for COM segments only] after 'COM'
+segments; otherwise after APP segments; 2) [for APPx segments only] after
+APPy's (trying y = x..0, in sequence); otherwise before APPy's (trying y =
+x+1..15, in sequence); 3) before DHP segments; 4) before SOF segments. If
+all these tentatives fail, the position immediately after the SOI segment
+is returned (i.e., 1).
 
-    my $new_position = $file->find_new_app_segment_position();
+    my $new_position = $file->find_new_app_segment_position('APP2');
 
 =item JPEG::save
 
@@ -269,26 +293,36 @@ management|/Managing a JPEG Record object> for further details).
 [arguments: C<([$dirref], $keys ...)>]
 If a specific record is needed, it can be selected with the help of the
 I<search_record> method, which searches for a record with a given key (see
-L</JPEG::Record::key>) in a given record directory, returning a reference to
-the record if the search was fruitful, the undefined value otherwise. The
-algorithm for the search is as follows: 1) a start directory is chosen by
-looking at the first argument: if it is an ARRAY ref it is popped out and
+L</JPEG::Record::key>) in a given record directory, returning a reference
+to the record if the search was fruitful, the undefined value otherwise.
+The algorithm for the search is as follows: 1) a start directory is chosen
+by looking at the last argument: if it is an ARRAY ref it is popped out and
 used, otherwise the top-level directory is selected; 2) a string is created
 by joining all remaining arguments on '@', then it is exploded into a list
-of keys on the same character; 3) these keys are used for an iterative
-search starting from the initially chosen directory: all but the last key
-must correspond to $REFERENCE records. If $key is exactly "FIRST_RECORD" /
-"LAST_RECORD", the first/last record in the current dir is used.
+of keys on the same character (all undefined or "false" arguments are
+simply discarded); 3) these keys are used for an iterative search starting
+from the initially chosen directory: all but the last key must correspond
+to $REFERENCE records. If $key is exactly "FIRST_RECORD" / "LAST_RECORD",
+the first/last record in the current dir is used.
 
     my $segments = $file->get_segments('APP0');
-    print "I found it!\n" if $$segments[0]->search_record('Identifier');
+    my $segment = $$segments[0];
+    print "I found it!\n" if $segment->search_record('Identifier');
 
 If you are interested only in the Record's value, you can use the
 I<search_record_value> method, a simple wrapper around search_record(): it
 returns the record value (with L</JPEG::Record::get_value>) if the search
 is successful, undef otherwise.
 
-    print "Its value is: ", $$segments[0]->search_record_value('Identifier');
+    print "Its value is: ", $segment->search_record_value('Identifier');
+
+Nota bene: the returned record is initialised with a "fake" $REFERENCE
+record pointing to the I<records> member of the current segment; this
+record is therefore returned if I<search_record> is invoked without
+arguments. For the same reason, search_record_value invoked without
+arguments returns the I<records> member:
+
+    $segment->search_record_value() eq $this->{records} || print "error!";
 
 =item JPEG::Segment::update
 
@@ -398,7 +432,7 @@ A Record's I<type> can be one among the following predefined constants:
 	 6  $SBYTE      An 8-bit signed integer
 	 7  $UNDEF      A generic variable length string
 	 8  $SSHORT     A 16-bit signed integer
-	 9  $SLONG      A 32-bit signed integer (2's complem.)
+	 9  $SLONG      A 32-bit signed integer (2's complement)
 	10  $SRATIONAL  Two SLONGs (numerator and denominator)
 	11  $FLOAT      A 32-bit float (a single float)
 	12  $DOUBLE     A 64-bit float (a double float)
@@ -471,7 +505,7 @@ If the Record structure is needed in detail, one can resort to the I<get>
 method; in list context this method returns (L<key|/JPEG::Record::key>,
 L<type|/JPEG::Record::type>, count, dataref).  The data reference points to
 a packed scalar, ready to be written to disk. In scalar context, it returns
-the dereferentiated dataref. This is tricky (but handy for other routines).
+the dereferenced dataref. This is tricky (but handy for other routines).
 The argument specifies an endianness (this defaults to big endian).
 
     my ($key, $type, $count, $dataref) = $record->get();
@@ -636,8 +670,9 @@ I<provide_app1_Exif_segment> method instead, which forces the Segment to be
 present in the file, and returns its reference. The algorithm is the
 following: 1) if at least one Segment with this properties is already
 present, we are done; 2) if [1] fails, an APP1 segment is added and
-initialised with a big endian Exif structure. Note that there is no $index
-argument here.
+initialised with a big-endian Exif structure (its position is chosen by
+L<find_new_app_segment_position|/JPEG::find_new_app_segment_position>, as
+usual). Note that there is no $index argument here.
 
     my $ref = $file->provide_app1_Exif_segment();
 
@@ -686,26 +721,25 @@ numerical value (this solves problems with non-standard tags). The subset
 of Exif tags returned by this method is determined by the value of $what,
 which can be one of:
 
-    $what         returned info                         returned type
-    --------------------------------------------------------------------
-    ALL           (default) everything but THUMBNAIL    ref. to hash of hashes
-    IMAGE_DATA    a merge of IFD0_DATA and SUBIFD_DATA  ref. to flat hash
-    THUMB_DATA    this is an alias for IFD1_DATA        ref. to flat hash
-    THUMBNAIL     the actual (un)compressed thumbnail   ref. to scalar
-    ROOT_DATA     header records (TIFF and similar)     ref. to flat hash
-    IFD0_DATA     primary image TIFF tags               ref. to flat hash
-    SUBIFD_DATA   Exif private tags                     ref. to flat hash
-    GPS_DATA      GPS data of the primary image         ref. to flat hash
-    INTEROP_DATA  interoperability data                 ref. to flat hash
-    IFD1_DATA     thumbnail-related TIFF tags           ref. to flat hash
+    $what          returned info                         returned type
+    ---------------------------------------------------------------------
+    ALL            (default) everything but THUMBNAIL    ref. to hash of hashes
+    IMAGE_DATA     a merge of IFD0_DATA and SUBIFD_DATA  ref. to flat hash
+    THUMB_DATA     this is an alias for IFD1_DATA        ref. to flat hash
+    THUMBNAIL      the actual (un)compressed thumbnail   ref. to scalar
+    ROOT_DATA      header records (TIFF and similar)     ref. to flat hash
+    IFD0_DATA      primary image TIFF tags               ref. to flat hash
+    SUBIFD_DATA    Exif private tags                     ref. to flat hash
+    MAKERNOTE_DATA MakerNote tags (if struct. is known)  ref. to flat hash
+    GPS_DATA       GPS data of the primary image         ref. to flat hash
+    INTEROP_DATA   interoperability data                 ref. to flat hash
+    IFD1_DATA      thumbnail-related TIFF tags           ref. to flat hash
 
-Setting $what equal to 'ALL' returns a reference to a hash of hashes, a
-data structure very close to the Exif APP1 segment structure; in the
-top-level hash there is an entry for each IFD or subIFD, plus a special
-entry (key equal to 'APP1') containing some non Exif parameters and the
-thumbnail (if present). Each entry of the top-level hash is a pair ($name,
-$hashref), where $hashref points to a second-level hash containing a copy
-of all Exif records present in the $name IFD (sub)directory (if this
+Setting $what equal to 'ALL' returns a reference to a hash of hashes, whose
+top-level hash contains the following keys: ROOT_DATA, IFD0_DATA,
+SUBIFD_DATA, GPS_DATA, INTEROP_DATA, MAKERNOTE_DATA and IFD1_DATA; each key
+corresponds to a second-level hash containing a copy of all Exif records
+present in the IFD (sub)directory corresponding to the key (if this
 directory is not present or contains no records, the second-level hash
 exists and is empty). Note that the Exif record values' format is not
 checked to be valid according to the Exif standard. This is, in some sense,
@@ -719,12 +753,12 @@ details on possible records):
 
 			 can give
     $hash_ref = {
-           'APP1' => 
+           'ROOT_DATA' => 
                 { 'Signature'               => [ 42             ],
                   'Endianness'              => [ 'MM'           ],
                   'Identifier'              => [ "Exif\000\000" ],
                   'ThumbnailData'           => [ ... image ...  ], },
-           'APP1@IFD1' =>
+           'IFD1_DATA' =>
                 { 'ResolutionUnit'          => [ 2              ],
                   'JPEGInterchangeFormatLength' => [ 3922       ],
                   'JPEGInterchangeFormat'   => [ 2204           ],
@@ -732,29 +766,30 @@ details on possible records):
                   'XResolution'             => [ 72, 1          ],
                   'Compression'             => [ 6              ],
                   'YResolution'             => [ 72, 1          ], },
-           'APP1@IFD0@SubIFD' =>
+           'SubIFD_DATA' =>
                 { 'ApertureValue'           => [ 35, 10         ],
                   'PixelXDimension'         => [ 2160           ],
                     etc., etc. ....
                   'ExifVersion'             => [ '0210'         ], },
-           'APP1@IFD0' =>
+           'MAKERNOTE_DATA' => {},
+           'IFD0_DATA' =>
                 { 'Model' => [ "KODAK DX3900 ZOOM DIGITAL CAMERA\000" ],
                   'ResolutionUnit'          => [ 2              ],
                     etc., etc. ...
                   'YResolution'             => [ 230, 1         ], },
-           'APP1@IFD0@GPS' => {},
-           'APP1@IFD0@SubIFD@Interop' =>
+           'GPS_DATA' => {},
+           'INTEROP_DATA' =>
                 { 'InteroperabilityVersion' => [ '0100'         ],
                   'InteroperabilityIndex'   => [ "R98\000"      ], }, };
 
 Setting $what equal to '*_DATA' returns a reference to a flat hash,
 corresponding to one or more IFD (sub)dirs. For instance, 'IMAGE_DATA' is a
 merge of 'IFD0_DATA' and 'SUBIFD_DATA': this interface is simpler for the
-end-user, because there is only one dereferentiation; also, he/she does not
-need to know the (sub)IFD names or to be aware of the partition of records
-related to the main image into two IFDs. If the (sub)directory is not
-present or contains no records, the returned hash exists and is empty.
-With reference to the previous example:
+end-user, because there is only one dereference level; also, he/she does
+not need to be aware of the partition of records related to the main image
+into two IFDs. If the (sub)directory is not present or contains no records,
+the returned hash exists and is empty. With reference to the previous
+example:
 
     my $hash_ref = $segment->get_Exif_data('IMAGE_DATA', 'TEXTUAL');
 
@@ -847,12 +882,13 @@ string, the user can supply a Perl scalar without the final null character
 
 The I<$what> argument must be a scalar, and it selects the portion of the
 Exif APP1 segment concerned by the I<set_Exif_data> call. So, obviously,
-the end user can modify only one section at a time; this is a simplification
-(for the developer of course) but also for the end user, because trying to
-set all Exif-like values in one go would require an offensively complicated
-data structure to specify the destination of each record (note that some
-records in different sections can have the same numerical tag, so a plain
-hash would not trivially work). Valid values for $what are:
+the end user can modify only one section at a time; this is a
+simplification (for the developer of course) but also for the end user,
+because trying to set all Exif-like values in one go would require an
+offensively complicated data structure to specify the destination of each
+record (note that some records in different sections can have the same
+numerical tag, so a plain hash would not trivially work). Valid values for
+$what are (MakerNote data are not currently modifiable):
 
     $what         modifies ...                          $data type
     --------------------------------------------------------------------
@@ -903,9 +939,9 @@ Depending on $what, some of the following notes apply:
 
 =item ROOT_DATA
 
-The only modifiable item is the 'Endianness' (and it can only be set to big
-endian, 'MM', or little endian, 'II'); everything else is rejected (see the
-L<APP1 structure|Image::MetaData::JPEG::Structures/Structure of an Exif
+The only modifiable item is the 'Endianness' (and it can only be set to
+big-endian, 'MM', or little-endian, 'II'); everything else is rejected (see
+the L<APP1 structure|Image::MetaData::JPEG::Structures/Structure of an Exif
 APP1 segment> for further details). This only influences how the image is
 written back to disk (the in-memory representation is always native).
 
@@ -933,13 +969,16 @@ images.
 
 See the L<private Exif|Image::MetaData::JPEG::TagLists/Exif tags for the
 0th IFD Exif private subdirectory> section in the appendixes. The
-'ExifVersion', 'ComponentsConfiguration', 'FlashpixVersion', and
-'ColorSpace' records are forced if not present (to '0220', '1230', '0100',
-and 1 respectively). Also, the 'PixelXDimension' and 'PixelYDimension' are
-added if necessary, with the real image dimensions calculated by
-I<get_dimensions()>. The MakerNote record can be supplied by the user, but
-it is currently treated as a purely binary field (this could change in
-future, if and when maker notes are supported).
+'ExifVersion', 'ComponentsConfiguration', 'FlashpixVersion', 'ColorSpace',
+and 'Pixel[XY]Dimension' records are forced if not present (to '0220',
+'1230', '0100', 1 and 0x0 respectively). Image dimensions can be retrieved
+from the SOF segment with the JPEG structure object's method
+L<get_dimensions()|/JPEG::get_dimensions> and set explicitly by the user
+if necessary (this cannot be done from within the APP1 segment, because it
+does not link back to its parent); however, the horizontal field in the
+SubIFD should not include data padding, while that in the SOF segment does,
+so the meaning is slightly different and these fields cannot be automatically
+calculated.
 
 =item THUMB_DATA (or its alias B<IFD1_DATA>)
 
@@ -980,6 +1019,15 @@ want to add it to the file, it is better to use the
 I<forge_interoperability_IFD> method, which takes care of all values
 ('RelatedImageFileFormat' is set to 'Exif JPEG Ver. 2.2', and the
 dimensions are taken from I<get_dimensions()>).
+
+=item MAKERNOTE_DATA
+
+See the appendix on L<MakerNotes|Image::MetaData::JPEG::MakerNotes> for a
+detailed discussion on how the content of a MakerNote is managed. If there
+is an error during the parsing of the MakerNote, only those tags which
+could be fully decoded before the error are returned. Note that MakerNote
+structures are often partially known, so many tags will likely be
+translated as 'Unknown_tag_...'. MakerNotes cannot be currently modified.
 
 =item THUMBNAIL
 
@@ -1041,7 +1089,7 @@ meaning of $index is influenced by the value of $what.
 
 =item JPEG::provide_app13_segment
 
-[arguments: C<($what)>]
+[arguments: C<($what)>] 
 If you want to be sure to have an APP13 Segment suitable for the kind of
 information you want to write, use the I<provide_app13_segment> method
 instead, which forces the Segment to be present in the file, and returns
@@ -1049,8 +1097,8 @@ its reference. If at least one segment matching $what is already present,
 the first one is returned. Otherwise, the first Photoshop-like APP13 is
 adapted by inserting an appropriate subdirectory record
 (L<update|/JPEG::Segment::update> is called automatically). If no such
-segment exists, it is first created and inserted. Note that there is no
-$index argument here.
+segment exists, it is first created and inserted (the "Photoshop 3.0\000"
+identifier is used). Note that there is no $index argument here.
 
     my $ref_Photoshop = $file->provide_app13_segment('PHOTOSHOP');
 
@@ -1246,7 +1294,7 @@ Segments (only APP and COM Segments).
     * COM    User comments              parse/read/write
     * APP0   JFIF data (+ thumbnail)    parse/read
     * APP1   Exif or XMP data           parse/read[Exif]/write[Exif]
-    * APP1   Maker notes                in development
+    * APP1   Maker notes                parse/read
     * APP2   FPXR data or ICC profiles  parse
     * APP3   additional Exif-like data  parse
     * APP4   HPSC                       nothing
@@ -1260,8 +1308,8 @@ I<USE WITH CAUTION! THIS IS EXPERIMENTAL SOFTWARE!>
 
 This module is still I<experimental>, and not yet finished. In particular,
 it is far from being well tested, and some interfaces could change
-depending on user feedback. Parsing of I<maker notes> in the Exif section
-is not yet implemented (moreover, have a look at the MakerNote
+depending on user feedback. The ability to modify I<maker notes> is not yet
+implemented (moreover, have a look at the MakerNote
 L<appendix|Image::MetaData::JPEG::MakerNotes/On the problem of MakerNote
 corruption> for a general note on the problem of MakerNote
 corruption). APP13 data spanning I<multiple Segments> are not correctly
@@ -1387,7 +1435,7 @@ Stefano Bettelli, B<bettelli@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2004 by Stefano Bettelli
+Copyright (C) 2004,2005 by Stefano Bettelli
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU L<General Public License|perlgpl>. See the

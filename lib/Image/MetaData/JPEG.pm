@@ -1,29 +1,36 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 #use 5.008;
 package Image::MetaData::JPEG;
 use Image::MetaData::JPEG::Tables qw(:JPEGgrammar);
+use Image::MetaData::JPEG::Backtrace;
 use Image::MetaData::JPEG::Segment;
 no  integer;
 use strict;
 use warnings;
 
-our $VERSION = '0.13';
+our $VERSION = '0.14';
 
 ###########################################################
-# Load other parts for this package. In order to avoid    #
-# that this file becomes too large, only general interest #
-# methods are written here.                               #
+# These simple methods should be used instead of standard #
+# "warn" and "die" in this package; they print a much     #
+# more elaborated error message (including a stack trace).#
+# Warnings can be turned off altogether simply by setting # 
+# Image::MetaData::JPEG::show_warnings to false.          #
 ###########################################################
-BEGIN {
-    require "Image/MetaData/JPEG/JPEG_various.pl";
-    require "Image/MetaData/JPEG/JPEG_comments.pl";
-    require "Image/MetaData/JPEG/JPEG_app1_exif.pl";
-    require "Image/MetaData/JPEG/JPEG_app13.pl";
-}
+sub warn { my ($this, $message) = @_;
+	   warn Image::MetaData::JPEG::Backtrace::backtrace
+	       ($message, "Warning" . $this->info(), $this)
+	       if $Image::MetaData::JPEG::show_warnings; }
+sub die  { my ($this, $message) = @_;
+	   die Image::MetaData::JPEG::Backtrace::backtrace
+	       ($message, "Fatal error" . $this->info(), $this); }
+sub info { my ($this) = @_;
+	   my $filename = $this->{filename} || '<no file name>';
+	   return " [file $filename]"; }
 
 ###########################################################
 # Constructor for a JPEG file structure object, accepting #
@@ -146,7 +153,7 @@ sub save {
 sub open_input {
     my ($this, $file_input) = @_;
     # protect against undefined values
-    die 'Undefined input' unless defined $file_input;
+    $this->die('Undefined input') unless defined $file_input;
     # scalar references: save the reference in $this->{handle}
     # and save a self-explicatory string as file name
     if (ref $file_input eq 'SCALAR') {
@@ -157,7 +164,7 @@ sub open_input {
     # open); then, the file name of the original file is saved.
     else {
 	open($this->{handle}, '<', $file_input) ||
-	    die "Open error on $file_input: $!";
+	    $this->die("Open error on $file_input: $!");
 	binmode($this->{handle});
 	$this->{filename} = $file_input; }
 }
@@ -204,9 +211,9 @@ sub get_data {
     # (and throw an error if reading failed).
     if ($is_file) {
 	seek($handle, $offset, 0) ||
-	    die "Error while seeking in  $this->{filename}";
+	    $this->die("Error while seeking in  $this->{filename}");
 	my $read = read $handle, $data, $length;
-	die "Read error in  $this->{filename}"
+	$this->die("Read error in  $this->{filename}")
 	    if ! defined $read || $read < $length; }
     # otherwise, we are dealing with a scalar reference, and
     # everything is much simpler (this can't fail, right?)
@@ -260,14 +267,14 @@ sub parse_segments {
     my $offset = 0;
     my $isize  = $this->get_data('LENGTH');
     # don't claim empty files are valid JPEG pictures
-    die 'Empty file' unless $isize;
+    $this->die('Empty file') unless $isize;
     # loop on input data and find all of its segment
     while ($offset < $isize) {
 	# search for the next JPEG marker, giving the segment type
 	(my $marker, $offset) = $this->get_next_marker($offset);
 	# Die on unknown markers
-	die sprintf 'Unknown marker found: 0x%02x (offset $offset)', $marker
-	    unless exists $JPEG_MARKER_BY_CODE{$marker};
+	$this->die(sprintf 'Unknown marker found: 0x%02x (offset $offset)',
+		   $marker) unless exists $JPEG_MARKER_BY_CODE{$marker};
 	# save the current offset (beginning of data)
 	my $start = $offset;
 	# calculate the name of the marker
@@ -277,20 +284,23 @@ sub parse_segments {
 	# SOI, EOI and ReSTart are dataless segments
 	my $length = 0; goto DECODE_LENGTH_END if $name =~ /^RST|EOI|SOI/;
       DECODE_LENGTH_START:
+	# we need at least two bytes here
+	$this->die('Segment size not found') unless $isize > $offset + 2;
 	# decode the length of this application block (2 bytes).
 	# This is always in big endian ("Motorola") style, that
 	# is the first byte is the most significant one.
 	$length = unpack 'n', ${$this->get_data($offset, 2)};
 	# the segment length includes the two aforementioned
 	# bytes, so the length must be at least two
-	die 'JPEG segment too small' if $length < 2;
+	$this->die('JPEG segment too small') if $length < 2;
       DECODE_LENGTH_END:
+	# we need at least $length bytes here
+	$this->die('Segment data not found') unless $isize >= $offset+$length;
 	# pass the data to a segment object and store it, unless
 	# the "read_only" member is set and $flag is "NOPARSE".
 	# (don't pass $flag to dataless segments, it is just silly).
-	# (remember about the new 'parental' argument in Segment's ctor)
 	push @{$this->{segments}}, new Image::MetaData::JPEG::Segment
-	    ($this, $name, $this->get_data($start + 2, $length - 2),
+	    ($name, $this->get_data($start + 2, $length - 2),
 	     $length ? $flag : undef) unless $this->{read_only} && $flag;
 	# update offset
 	$offset += $length;
@@ -306,11 +316,10 @@ sub parse_segments {
 	# itself after the EOI segment, as well as undocumented binary
 	# and ascii data. Save them in a pseudo-segment, so that they
 	# can be restored (take "read_only" into account).
-	# (remember about the new 'parental' argument in Segment's ctor)
 	if ($name eq 'EOI' && $offset < $isize) {
 	    my $len = $isize - $offset;
 	    push @{$this->{segments}}, new Image::MetaData::JPEG::Segment
-		($this, 'Post-EOI', $this->get_data($offset, $len), 'NOPARSE')
+		('Post-EOI', $this->get_data($offset, $len), 'NOPARSE')
 		unless $this->{read_only};
 	    $offset += $len;
 	}
@@ -328,6 +337,16 @@ sub parse_segments {
 # ters; some markers stand alone. The return value is a   #
 # list containing the numeric value of the second marker  #
 # byte and an offset pointing just after it.              #
+# ------------------------------------------------------- #
+# An old version of "Arles Image Web Page Creator" had a  #
+# bug which caused the application to generate JPEG's     #
+# with illegal comment segments, reportedly due to a bug  #
+# in the Intel JPEG library the developers used at that   #
+# time (these segments had to 0x00 bytes appended). It is #
+# true that a JPEG file with garbage between segments is  #
+# to be considered invalid, but some libraries like IJG's #
+# try to forgive, so we try to forgive too, if the amount #
+# of garbage is not too large ...                         #
 #=========================================================#
 # Ref: "Digital compression and coding of continuous-tone #
 #       still images: requirements and guidelines",       #
@@ -335,12 +354,22 @@ sub parse_segments {
 #=========================================================#
 sub get_next_marker {
     my ($this, $offset) = @_;
-    my $punctuation = chr $JPEG_PUNCTUATION;
-    # it is assumed that we are at the beginning of
+    my $punctuation = chr $JPEG_PUNCTUATION; my $garbage = 0;
+    # this is the upper limit to $offset
+    my $length = $this->get_data('LENGTH');
+    # $offset should point at the beginning of a new segment,
+    # so the next byte should be 0xff. However, sometimes garbage
+    # slips in ... Forgive this bug if garbage is not too much
+    $offset < $length && ${$this->get_data($offset, 1)} eq $punctuation 
+	? last : (++$garbage, ++$offset) for (0..10);
+    $this->die('Next marker not found') unless $length - $offset > 1;
+    # it is assumed that we are now at the beginning of
     # a new segment, so the next byte must be 0xff.
     my $marker_byte = ${$this->get_data($offset++, 1)};
-    die sprintf('Unknown punctuation (0x%02x) at offset 0x%x',
-		ord($marker_byte), $offset) if $marker_byte ne $punctuation;
+    $this->die(sprintf 'Unknown punctuation (0x%02x) at offset 0x%x',
+	       ord($marker_byte), $offset) if $marker_byte ne $punctuation;
+    # report about garbage, unless we died
+    $this->warn("Skipping $garbage garbage bytes") if $garbage;
     # next byte can be either the marker type or a padding
     # byte equal to 0xff (skip it if it's a padding byte)
     $marker_byte = ${$this->get_data($offset++, 1)}
@@ -396,13 +425,14 @@ sub parse_ecs {
     # "g" in scalar context. My benchmarks say this is almost as fast as C.
     pos($$buffer) = 0; scalar $$buffer =~ /$punctuation[^$skipstring]/g;
     # trim the $buffer at the byte before the punctuation mark; the
-    # position of the last match can be accessed through pos()
-    die 'ECS parsing failed' unless pos($$buffer);
-    substr($$buffer, pos($$buffer) - 2) = '';
-    # push a pseudo segment among the regular ones (of course, do not parse
-    # it) (remember about the new 'parental' argument in Segment's ctor)
+    # position of the last match can be accessed through pos(); if no
+    # match is found, complain but do not fail (similar behaviour to that
+    # of the 'xv' program); the file is however corrupt and unusable.
+    pos($$buffer) ? substr($$buffer, pos($$buffer) - 2) = ''
+	: $this->warn('Premature end of JPEG stream');
+    # push a pseudo segment among the regular ones (do not parse it)
     push @{$this->{segments}}, new Image::MetaData::JPEG::Segment
-	($this, $ecs_name, $buffer, 'NOPARSE');
+	($ecs_name, $buffer, 'NOPARSE');
     # return the updated offset
     return $offset + length $$buffer;
 }
@@ -449,7 +479,7 @@ sub get_segments {
 sub drop_segments {
     my ($this, $regex) = @_;
     # refuse to work with empty or undefined regular expressions
-    die 'drop_segments: you must specify a regular expression'
+    $this->die('regular expression not specified')
 	unless defined $regex && length $regex > 0;
     # if $regex is 'METADATA', convert it
     $regex = '^(APP\d{1,2}|COM)$' if $regex eq 'METADATA';
@@ -481,14 +511,17 @@ sub insert_segments {
     $segref = [ $segref ] unless ref $segref eq 'ARRAY';
     # check that all elements in the list are segment references
     ref $_ eq 'Image::MetaData::JPEG::Segment' ||
-	die 'insert_segments: dying on a non-segment ref' for @$segref;
-    # calculate a convenient position if the user neglects to
-    $pos = $this->find_new_app_segment_position() unless defined $pos;
+	$this->die('$segref is not a reference') for @$segref;
+    # calculate a convenient position if the user neglects to;
+    # remember to pass the new segment name as an argument
+    $pos = $this->find_new_app_segment_position
+	(exists $$segref[0] ? $$segref[0]->{name} : undef) unless defined $pos;
+    my $max_pos = -1 + $this->get_segments();
     # fail if $pos is negative or out-of-bound;
-    die "insert_segments: out-of-bound position $pos"
-	if $pos < 0 || $pos >= scalar @{$this->{segments}}; 
+    $this->die("out-of-bound position $pos [0, $max_pos]")
+	if $pos < 0 || $pos > $max_pos;
     # fail if $pos points to the first segment and it is SOI
-    die "insert_segments: you cannot insert on start-of-image"
+    $this->die('inserting on start-of-image is forbidden')
 	if $pos == 0 && $this->{segments}->[0]->{name} eq 'SOI';
     # do the actual insertion (one or multiple segments);
     # if overwrite is defined, it must be the number of
@@ -499,33 +532,72 @@ sub insert_segments {
 
 ###########################################################
 # This method finds a position for a new application or   #
-# comment segment to be placed in the file. If a DHP seg- #
-# ment is present, it returns its position; otherwise, it #
-# tries the same with SOF segments; otherwise, it selects #
-# the position immediately after the last application or  #
-# comment segment. If even this fails, it returns the     #
+# comment segment to be placed in the file. The algorithm #
+# is the following: the position is chosen immediately    #
+# before the first (or after the last) element of some    #
+# list, provided that the list is not empty, otherwise    #
+# the next list is taken into account:                    #
+#  -) [for COM segments only] try after 'COM' segments;   #
+#     otherwise try after all APP segments;               #
+#  -) [for APPx segments only] try after the last element #
+#     of the list of APPy's (with y = x..0, in sequence); #
+#     otherwise try before the first element of the list  #
+#     of APPy's (with y = x+1..15, in sequence);          #
+#  -) try before the first DHP segment                    #
+#  -) try before the first SOF segment                    #
+# If all these approaches fail, this method returns the   #
 # position immediately after the SOI segment (i.e., 1).   #
+# ------------------------------------------------------- #
+# The argument must be the name of the segment to be      #
+# inserted (it defaults to 'COM', producing a warning).   #
 ###########################################################
 sub find_new_app_segment_position {
-    my ($this) = @_;
+    my ($this, $name) = @_;
+    # if name is not specified, issue a warning and set 'COM'
+    $this->warn('Segment name not specified: using COM'), $name = 'COM'
+	unless $name;
+    # setting $name to something else than 'COM' or 'APPx' is an error
+    $this->die("Unknown segment name ($name)")
+	unless $name =~ /^(COM|APP([0-9]|1[0-5]))$/;
     # just in order to avoid a warning for half-read files
     # with an incomplete set of segments, let us make sure
     # that no position is past the segment array end
-    my $last_segment = -1 + scalar $this->get_segments();
+    my $last_segment = -1 + $this->get_segments();
     my $safe = sub { ($last_segment < $_[0]) ? $last_segment : $_[0] };
-    # get the indexes of the DHP segments; if this list
-    # is not void, return its position
-    return &$safe($_) for $this->get_segments('DHP', 'INDEXES');
-    # same thing with SOF segments
-    return &$safe($_) for $this->get_segments('SOF', 'INDEXES');
-    # otherwise, get the indexes of all application and comment
-    # segments, and return the position after the last one.
-    return &$safe(1+$_) for reverse $this->get_segments('APP|COM', 'INDEXES');
+    # this private function returns a list containing the
+    # indexes of the segments whose name matches the argument
+    my $list = sub { $this->get_segments('^'.$_[0].'$', 'INDEXES') };
+    # if there are already some 'COM' segments, let us put the new COM
+    # segment immediately after them; otherwise try after all APP segments
+    if ($name =~ 'COM') {
+	return &$safe(1+$_) for reverse &$list('COM');
+	return &$safe(1+$_) for reverse &$list('APP.*'); }
+    # if $name is APPx, try after the last element of the list of APPy's
+    # (with y = x .. 0, in sequence); if all these fail, try before the
+    # first element of the list of APPy's (with y = x+1..15, in sequence)
+    if ($name =~ 'APP') {
+	my $x = substr($name, 3);
+	for (reverse 0..$x) {return &$safe(1+$_) for reverse &$list("APP$_");};
+	for (1+$x..15) { return &$safe($_) for &$list("APP$_"); }; }
+    # if all specific tests failed, try with the
+    # first DHP segment or the first SOF segment
+    return &$safe($_) for &$list('DHP');
+    return &$safe($_) for &$list('SOF');
     # if even this fails, try after start-of-image (just in order
     # to avoid a warning for half-read files with not even two
     # segments (they cannot be saved), return 0 if necessary)
     return &$safe(1);
 }
+
+###########################################################
+# Load other parts for this package. In order to avoid    #
+# that this file becomes too large, only general interest #
+# methods are written here.                               #
+###########################################################
+require 'Image/MetaData/JPEG/JPEG_various.pl';
+require 'Image/MetaData/JPEG/JPEG_comments.pl';
+require 'Image/MetaData/JPEG/JPEG_app1_exif.pl';
+require 'Image/MetaData/JPEG/JPEG_app13.pl';
 
 # successful package load
 1;

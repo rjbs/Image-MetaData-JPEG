@@ -62,29 +62,22 @@ is( $desc1, $desc2, "get_Exif_data('IMAGE_DATA') behaves the same way" );
 
 #########################
 $hash = $seg1->get_Exif_data('ALL', 'TEXTUAL');
-is( scalar keys %$hash, 6, "there are five subdirs" );
-
-#########################
-%$hash = map { ($_ =~ /APP1/) ? ($_ => $$hash{$_}) : undef } keys %$hash;
-is( scalar keys %$hash, 6, "they all begin with \"APP1\"" );
+is( scalar keys %$hash, 7, "there are seven subdirs" );
 
 #########################
 $hash2 = $image->get_Exif_data('ALL', 'TEXTUAL');
 is_deeply( $hash, $hash2, "the two forms of get_Exif_data agree" );
 
 #########################
-$realcounts{'APP1'} = grep { $_->{type} != $REFERENCE } @{$seg1->{records}};
-$records = $seg1->search_record_value('IFD0');
-$realcounts{'APP1@IFD0'} = grep { $_->{type} != $REFERENCE } @$records;
-$records = $seg1->search_record_value('GPS', $records);
-$realcounts{'APP1@IFD0@GPS'} = grep { $_->{type} != $REFERENCE } @$records;
-$records = $seg1->search_record_value('IFD0');
-$records = $seg1->search_record_value('SubIFD', $records);
-$realcounts{'APP1@IFD0@SubIFD'} = grep { $_->{type} != $REFERENCE } @$records;
-$records = $seg1->search_record_value('Interop', $records);
-$realcounts{'APP1@IFD0@SubIFD@Interop'}=grep{$_->{type}!=$REFERENCE} @$records;
-$records = $seg1->search_record_value('IFD1');
-$realcounts{'APP1@IFD1'} = grep { $_->{type} != $REFERENCE } @$records;
+$records = $seg1->search_record_value($$_[1]),
+    $realcounts{$$_[0]} = grep { $_->{type} != $REFERENCE } @$records,
+    for (['ROOT_DATA', ''], ['IFD1_DATA', 'IFD1'], ['IFD0_DATA', 'IFD0'],
+	 ['GPS_DATA', 'IFD0@GPS'], ['SUBIFD_DATA', 'IFD0@SubIFD'],
+	 ['INTEROP_DATA', 'IFD0@SubIFD@Interop']);
+$records = $seg1->search_record_value('IFD0@SubIFD');
+$records = (map { $_->get_value() }
+	    grep { $_->{key} =~ /^MakerNoteData/ } @$records)[0];
+$realcounts{'MAKERNOTE_DATA'} = grep{ $_->{type} != $REFERENCE } @$records;
 %counts = map { $_ => (scalar keys %{$$hash{$_}}) } keys %$hash;
 is_deeply( \ %counts , \ %realcounts, "(sub)IFD's record counts OK ..." );
 
@@ -98,44 +91,24 @@ $hash2 = $image->get_Exif_data('ALL', 'NUMERIC');
 is_deeply( $hash, $hash2, "... Structure and Segment method coincide" );
 
 #########################
-$hash = $seg1->get_Exif_data('ROOT_DATA', 'TEXTUAL');
-is( scalar keys %$hash, $realcounts{'APP1'}, "count OK for ROOT_DATA" );
+$hash = $seg1->get_Exif_data($_, 'TEXTUAL'),
+    is( scalar keys %$hash, $realcounts{$_}, "count OK for $_" ),
+    for ('ROOT_DATA', 'IFD0_DATA', 'IFD1_DATA', 'SUBIFD_DATA',
+	 'GPS_DATA', 'INTEROP_DATA', 'MAKERNOTE_DATA');
 
 #########################
+$hash = $seg1->get_Exif_data($_, 'ROOT_DATA');
 $count = scalar grep {/known/} keys %$hash;
-is( $count, 0, "All textual keys are known" );
-
-#########################
-$hash = $seg1->get_Exif_data('IFD0_DATA');
-is( scalar keys %$hash, $realcounts{'APP1@IFD0'}, "count OK for IFD0_DATA" );
-
-#########################
-$hash = $seg1->get_Exif_data('IFD1_DATA');
-is( scalar keys %$hash, $realcounts{'APP1@IFD1'}, "count OK for IFD1_DATA" );
-
-#########################
-$hash = $seg1->get_Exif_data('SUBIFD_DATA');
-is( scalar keys %$hash, $realcounts{'APP1@IFD0@SubIFD'},
-    "count OK for SUBIFD_DATA" );
-
-#########################
-$hash = $seg1->get_Exif_data('GPS_DATA');
-is( scalar keys %$hash, $realcounts{'APP1@IFD0@GPS'},
-    "count OK for GPS_DATA" );
-
-#########################
-$hash = $seg1->get_Exif_data('INTEROP_DATA');
-is( scalar keys %$hash, $realcounts{'APP1@IFD0@SubIFD@Interop'}, 
-    "count OK for INTEROP_DATA" );
+is( $count, 0, "All textual keys in ROOT_DATA are known" );
 
 #########################
 $hash = $seg1->get_Exif_data('IMAGE_DATA');
-is( scalar keys %$hash, $realcounts{'APP1@IFD0'} + 
-    $realcounts{'APP1@IFD0@SubIFD'}, "count OK for IMAGE_DATA" );
+is( scalar keys %$hash, $realcounts{'IFD1_DATA'} + $realcounts{'SUBIFD_DATA'},
+    "count OK for IMAGE_DATA" );
 
 #########################
 $hash = $seg1->get_Exif_data('THUMB_DATA');
-is( scalar keys %$hash, $realcounts{'APP1@IFD1'}, "count OK for THUMB_DATA" );
+is( scalar keys %$hash, $realcounts{'IFD1_DATA'}, "count OK for THUMB_DATA" );
 
 #########################
 $hash  = $seg1->get_Exif_data('IFD0_DATA');
@@ -207,15 +180,18 @@ is_deeply( $hash, {}, "Absence of interop. data is correctly detected" );
 
 #########################
 $hash = $seg1->get_Exif_data('ALL');
-is( scalar keys %$hash, 6, "'ALL' on a bare Exif segment is not empty" );
+isnt( scalar keys %$hash, 0, "'ALL' on a bare Exif segment is not empty" );
 
 #########################
-%realcounts = ();
-$realcounts{'APP1'} = grep { $_->{type} != $REFERENCE } @{$seg1->{records}};
-$records = $seg1->search_record_value('IFD0');
-$realcounts{'APP1@IFD0'} = grep { $_->{type} != $REFERENCE } @$records;
-@realcounts{'APP1@IFD0@GPS', 'APP1@IFD0@SubIFD',
-	    'APP1@IFD0@SubIFD@Interop', 'APP1@IFD1'} = (0, 0, 0, 0);
+$records = $seg1->search_record_value($$_[1]),
+    $realcounts{$$_[0]} = grep { $_->{type} != $REFERENCE } @$records,
+    for (['ROOT_DATA', ''], ['IFD1_DATA', 'IFD1'], ['IFD0_DATA', 'IFD0'],
+	 ['GPS_DATA', 'IFD0@GPS'], ['SUBIFD_DATA', 'IFD0@SubIFD'],
+	 ['INTEROP_DATA', 'IFD0@SubIFD@Interop']);
+$records = $seg1->search_record_value('IFD0@SubIFD');
+$records = (map { $_->get_value() }
+	    grep { $_->{key} =~ /^MakerNoteData/ } @$records)[0];
+$realcounts{'MAKERNOTE_DATA'} = grep{ $_->{type} != $REFERENCE } @$records;
 %counts = map { $_ => (scalar keys %{$$hash{$_}}) } keys %$hash;
 is_deeply( \ %counts , \ %realcounts, "Again, (sub)IFD record counts OK ..." );
 

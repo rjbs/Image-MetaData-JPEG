@@ -50,7 +50,7 @@ my $calculated = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (IFD01_DATA)";
-plan tests => 54;
+plan tests => 57;
 #=======================================
 
 #########################
@@ -183,7 +183,6 @@ is_deeply( $hash, {}, "adding without the IFD1 dir" );
 $ref = \ "dummy";
 $image->save($ref);
 $image2 = $cname->new($ref, '^APP1$');
-$_->{parent} = $image for @{$image2->{segments}}; # parental link hack
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################
@@ -212,6 +211,18 @@ ok( exists $$hash{&$val('XResolution')}, "Invalid resolution rejected" );
 #########################
 $hash = $image->set_Exif_data({'ResolutionUnit' => 5}, 'IFD0_DATA', 'ADD');
 ok( exists $$hash{&$val('ResolutionUnit')}, "Invalid ResolutionUnit rejected");
+
+#########################
+$dt = '1999:05:05 12:00:00';
+$hash = $image->set_Exif_data({'DateTime' => $dt}, 'IFD0_DATA', 'ADD');
+ok( ! exists $$hash{&$val('DateTime')}, "Standard date/time accepted" );
+
+#########################
+$hash = $image->get_Exif_data('IFD0_DATA', 'TEXTUAL');
+ok( exists $$hash{'DateTime'}, "... gotten back via get_Exif_data" );
+
+#########################
+is_deeply( $$hash{'DateTime'}, [$dt."\000"], "... and its value is correct" );
 
 #########################
 $dt = '1994:23:23 12:14:61';
@@ -285,7 +296,6 @@ ok( exists $$hash{&$val('Matteing')}, "... and an obsoleted one" );
 #########################
 $image->save($ref);
 $image2 = $cname->new($ref, '^APP1$');
-$_->{parent} = $image for @{$image2->{segments}}; # parental link hack
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################

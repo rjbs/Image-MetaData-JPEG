@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 
@@ -10,11 +10,29 @@
 # type "perldoc <name_of_this_file>".                     #
 ###########################################################
 
+=head1 NAME
+
+Image::MetaData::JPEG::Structures - This document is an appendix to the
+main manual page of the L<Image::MetaData::JPEG> module, which the reader
+should refer to for further details and the general scope. This document
+contains information about the structure of a JPEG file.
+
 =head1 THE STRUCTURE OF JPEG PICTURES
 
-This document is an appendix to the main manual page of the
-L<Image::MetaData::JPEG> module, which the reader should refer to for
-further details and the general scope. The structure of a well formed JPEG
+The JPEG (Joint Photographic Experts Group) ISO standard is a lossy image
+compression mechanism developed before 1990, designed for compressing
+colour or gray-scale photo-realistic images (it performs poorly on line-art
+drawings). The JPEG mechanism is designed to exploit known limitations of
+the human eye, in particular the fact that colour changes are perceived
+less accurately than changes in brightness. Note that although the
+"baseline" JPEG format is patent-free, there are patents associated with
+some optional features, namely arithmetic coding and hierarchical
+storage. For this reason, these optional features are never used on the Web
+(good job, patent fans ...). JPEG refers only to a class of compression
+algorithms, not to a specific file format. In order to produce files with
+embedded JPEG streams, a number of file format (semi-)standards have been
+adapted or devised, some of which are listed in the L<format section|/A
+SHORT HISTORY OF JPEG FILE FORMATS>. The structure of a well formed JPEG
 file can be described by the following pseudo production rules (for sake of
 simplicity, some additional constraints between tables and SOF segments are
 neglected).
@@ -48,12 +66,105 @@ This package does not check that a JPEG file is really correct; it accepts
 a looser syntax, were segments and ECS blocks are just contiguous
 (basically, because it does not need to display the image!). All meta-data
 information is concentrated in the (COM*) and (APP) Segments, exception
-made for some records in the (SOF*) segment (e.g. image dimensions). For
-further details see 
+made for some records in the (SOF*) segment (e.g. image dimensions).
 
-   B<"Digital compression and coding of continuous-tone still images:
-    requirements and guidelines", CCITT recommendation T.81, 09/1992,
-   The International Telegraph and Telephone Consultative Committee>.
+  Reference: B<"Digital compression and coding of continuous-tone still
+             images: requirements and guidelines", CCITT recommend. T.81, 1992,
+             The International Telegraph and Telephone Consultative Committee,
+             standard ISO/IEC IS 10918-1 or ITU-T Recommendation T.81>.
+       Also: B<"The JPEG still picture compression standard", G.K.Wallace,
+             1991, IEEE Transactions on Consumer Electronics>.
+
+=head2 A SHORT HISTORY OF JPEG FILE FORMATS
+
+=head3 TIFF [not supported]
+
+The TIFF (Tagged Image File Format) is one of the most popular and flexible
+raster file formats for digital images, and is the de-facto standard
+graphics format for high colour depths. It was initially developed by Aldus
+(in 1986) and is now maintained (or neglected) by Adobe. Multiple images
+(e.g., fax pages) can be stored in a single TIFF file, each page in a
+separate IFD (Image File Directory), all IFD's being linked in a linear
+structure. The designers of TIFF wanted to be able to include all sorts of
+image information in the file (tags), like geometry, size, data arrangement
+and various compression options. However, lack of full TIFF support by the
+first publicly available readers resulted in a "reduced standard", so that
+even today most TIFF files contain only 32-bit uncompressed images. Support
+for JPEG streams was included in version 6.0 (in 1992), but it was badly
+designed, so that JPEG/TIFF files are nowadays very uncommon (some changes
+were proposed in various technical notes in 1995 and 2002, but they never
+made it to version 7.0).
+
+  Reference: B<"TIFF (TM)", revision 6.0, June 1992, Adobe Developers
+             Association, Adobe Systems Incorporated, Mountain View, CA, USA>.
+       Also: B<"Adobe PageMaker 6.0: TIFF Technical Notes", September 1995>,
+             B<"Adobe Photoshop: TIFF Technical Notes", March 2002>.
+
+=head3 JFIF
+
+The JFIF (JPEG File Interchange Format) was created by Eric Hamilton at
+C-Cube Microsystems in 1991 for storing JPEG-encoded data, and put into the
+public domain together with example reference software. JFIF is designed to
+allow files containing JPEG-encoded data streams to be exchanged between
+otherwise incompatible systems and applications. A JFIF file basically
+consists of a JPEG file with an APP0 segment of JFIF or JFXX type at the
+beginning, providing information missing from the JPEG stream: version
+number, horizontal and vertical pixel density, pixel aspect ratio and an
+optional thumbnail (extended JFIF files can contain also compressed
+thumbnails). JFIF files conform to the general file interchange
+specifications in ISO/IEC 10918-1.
+
+  Reference: B<"JPEG File Interchange Format", version 1.02, September 1992,
+             Eric Hamilton, C-Cube Microsystems, Milpitas, CA, USA>.
+
+=head3 SPIFF [not supported yet]
+
+The SPIFF (Still Picture Interchange File Format) is an official file
+format released in 1996 by the Joint Photographic Experts Group. It can
+contain image data streams encoded with a variety of compression mechanism,
+including JPEG and JBIG. When JPEG was standardised, disagreements among
+ISO committees prevented a standard JPEG file format from being created.
+The de-facto format that appeared was JFIF, with which a JPEG/SPIFF file is
+backward compatible. In addition to the image data, SPIFF includes
+information necessary to render it on common output devices, within the
+constraints imposed by that device. SPIFF appears not to be widely adopted;
+most producers prefer simple JFIF files.
+
+  Reference: B<ISO/IEC IS 10918-1, part 3> (extensions to the standard).
+
+=head3 CIFF [not supported yet]
+
+The CIFF (Camera Image File Format) is a JPEG-based image file format
+developed by some camera makers in 1997, and constitutes an evolution of
+the JFIF. A CIFF file has a standard JFIF APP0 segment, immediately
+followed by another APP0 segment holding information specific to a
+particular digital camera in a particular format. CIFF was not at all
+successful and was rapidly replaced by DCF/Exif.
+
+  Reference: B<"CIFF: Specification on Image Data File",
+             version 1.0 rev.4, December 1997, Canon corporation>.
+
+=head3 Exif and DCT
+
+The Exif (Exchangeable image file format), developed by the JEITA (1996
+v.1.0, 1997 v.1.1, 1998 v.2.1, 2002 v.2.2) standard was aimed at realizing
+a common format for the image files used with digital still cameras and
+other related equipment. Exif is paired with a set of naming conventions
+and directory layout for files in a camera memory (DCF or Design rule for
+Camera File system, 1999). An Exif file is a valid JPEG file with
+application marker segments (APP1 and APP2) inserted. Uncompressed files
+are recorded in TIFF-6 format. Related attribute information is stored in
+the tag information format defined in TIFF-6 (i.e., in a chain of IFD's in
+the APP1 segment). Information specific to the camera system and not
+defined in TIFF is stored in private tags registered for Exif. The Exif
+image file specification also specifies the method for recording
+thumbnails. The APP2 segment is used when recording Flashpix
+extensions. Exif is the most common JPEG file format used by digital
+cameras nowadays.
+
+  Reference: B<JEITA CP-3451, "Exchangeable image file format for digital
+             still cameras: Exif Version 2.2", April 2002, Japan Electronics
+             and Information Technology Industries Association>.
 
 =head2 Structure of a JFIF APP0 segment
 
@@ -160,7 +271,7 @@ follows:
     [Record name]    [size]   [description]
     ---------------------------------------
     Identifier       6 bytes   ("Exif\000\000" = 0x457869660000), not stored
-    Endianness       2 bytes   'II' (little endian) or 'MM' (big endian)
+    Endianness       2 bytes   'II' (little-endian) or 'MM' (big-endian)
     Signature        2 bytes   a fixed value = 42
     IFD0_Pointer     4 bytes   offset of 0th IFD (usually 8), not stored
     IFD0                ...    main image IFD
@@ -179,7 +290,7 @@ given with respect to the beginning of the TIFF header (i.e. the address of
 the 'MM' or 'II' pair). This means that if the 0th IFD begins (as usual)
 immediately after the end of the TIFF header, the offset value is 8. An
 Exif segment is the only part of a JPEG file whose endianness is not fixed
-to big endian.
+to big-endian.
 
 If the thumbnail is present it is located after the 1st IFD. There are 3
 possible formats: JPEG (only this is compressed), RGB TIFF, and YCbCr TIFF.
@@ -229,8 +340,12 @@ uses the APP13 segment for storing non-graphic information, such as layers,
 paths, IPTC data and more. The unit for this kind of information is called
 a "resource data block" (because they hold data that was stored in the
 Macintosh's resource fork in early versions of Photoshop). The content of
-an APP13 segment is the string "Photoshop 3.0\000" followed by a sequence
-of resource data blocks; a resource block has the following structure:
+an APP13 segment is formed by an identifier string (usually "Photoshop
+3.0\000", but also 'Adobe_Photoshop2.5:', used by earlier versions, is
+accepted; in this case some additional undocumented bytes are read
+(resolution info?) and saved in a root 'Resolution' record) followed by a
+sequence of resource data blocks; a resource block has the following
+structure:
 
     [Record name]    [size]   [description]
     ---------------------------------------
@@ -319,7 +434,7 @@ Stefano Bettelli, B<bettelli@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2004 by Stefano Bettelli
+Copyright (C) 2004,2005 by Stefano Bettelli
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU L<General Public License|perlgpl>. See the

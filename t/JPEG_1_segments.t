@@ -13,14 +13,14 @@ my $esel  = "\111";
 my $forged_sos = "${first}\011${esel}\277\321${last}";
 my $name  = "fancydir";
 my $data  = "xyz";
-my ($segment, $record, $handle, $mem, $result, $dirrec);
-my $trim = sub { (my $file = $::cname) =~ s/::/\//g;
-		 $_[0] =~ s/ at .*$file.*//; chomp $_[0]; $_[0] };
+my ($segment, $record, $handle, $mem, $result, $dirrec, $problem);
+my $trim = sub { join '\n', map { s/^.*\"(.*)\".*$/$1/; $_ }
+		 grep { /0:/ } split '\n', $_[0] };
 sub reset_mem { close $handle if $handle; open($handle, '>', \$mem); }
 
 #=======================================
 diag "Testing [Image::MetaData::JPEG::Segment]";
-plan tests => 53;
+plan tests => 62;
 #=======================================
 
 BEGIN { $::pkgname = 'Image::MetaData::JPEG';
@@ -29,7 +29,7 @@ BEGIN { $::pkgname = 'Image::MetaData::JPEG';
 BEGIN { use_ok "${main::pkgname}::Tables", qw(:RecordTypes :TagsAPP0); }
 
 #########################
-$segment = $::cname->new(undef, 'APP1', \ $forged_sos);
+$segment = $::cname->new('APP1', \ $forged_sos);
 ok( $segment, "APP1 segment created" );
 
 #########################
@@ -42,16 +42,15 @@ ok( $segment->{error}, "... with error flag set" );
 eval { $segment->update() };
 isnt( $@, '', "a faulty segment cannot be updated" );
 
-#########################
-eval { $::cname->new('COM', undef) };
+eval { $::cname->new(undef, 'COM', undef) };
 isnt( $@, '', "Error OK: " . &$trim($@));
 
 #########################
-eval { $::cname->new(undef, 'COM', undef) };
+eval { $::cname->new('COM', undef) };
 is( $@, '', "ctor survives to undef data" );
 
 #########################
-$segment = $::cname->new(undef, 'COM', \ $forged_sos);
+$segment = $::cname->new('COM', \ $forged_sos);
 ok( $segment, "Comment segment created" );
 
 #########################
@@ -71,7 +70,7 @@ ok( $record, "'Comment' record found" );
 isa_ok( $record, "${main::pkgname}::Record" );
 
 #########################
-$segment = $::cname->new(undef, 'SOS', \ $forged_sos);
+$segment = $::cname->new('SOS', \ $forged_sos);
 ok( $segment, "Forged SOS segment created" );
 # This is the structure of the segment:
 # [           ScanComponents]<......> = [     BYTE]  1
@@ -98,7 +97,13 @@ is( scalar $segment->search_record('LAST_RECORD')->get(),  $last,
 
 #########################
 $result = $segment->search_record();
-is( $result, undef, "search_record() without args gives undef" );
+is( $result->get_value(), $segment->{records},
+    "search_record() without args gives a fake root record" );
+
+#########################
+$result = $segment->search_record_value();
+is( $result, $segment->{records},
+    "search_record_value() without args gives root" );
 
 #########################
 eval { $segment->update() };
@@ -125,7 +130,7 @@ is( $mem, "${sos}${len}${forged_sos}",
 isnt( $segment->get_description(), undef, "get_description gives non-undef" );
 
 #########################
-$segment = $::cname->new(undef, 'APP1', \ $forged_sos, 'NOPARSE');
+$segment = $::cname->new('APP1', \ $forged_sos, 'NOPARSE');
 ok( ! $segment->{error}, "NOPARSE actually avoids parsing" );
 
 #########################
@@ -133,7 +138,7 @@ eval { $segment->update() };
 isnt( $@, '', "... but then you cannot update" );
 
 #########################
-$segment = $::cname->new(undef, 'COM');
+$segment = $::cname->new('COM');
 reset_mem(); $result = $segment->output_segment_data($handle);
 is( $mem, "$com\000\002", "output_segment_data works with empty comments" );
 
@@ -143,7 +148,7 @@ eval { $segment->update() };
 is( $@, '', "an empty segment can be modified and updated" );
 
 #########################
-$segment = $::cname->new(undef, 'COM', \ '');
+$segment = $::cname->new('COM', \ '');
 $segment->search_record('Comment')->set_value('*' x 2**16);
 eval { $segment->update() };
 is( $@, '', "an empty segment can be modified and updated (2)" );
@@ -153,22 +158,22 @@ eval { reset_mem(); $segment->output_segment_data($handle) };
 isnt( $@, '', "size check works in forged comment" );
 
 #########################
-$segment = $::cname->new(undef, 'ECS', \ $forged_sos);
+$segment = $::cname->new('ECS', \ $forged_sos);
 reset_mem(); $segment->output_segment_data($handle);
 is( $mem, $forged_sos, "Raw output for raw data" );
 
 #########################
-$segment = $::cname->new(undef, 'Post-EOI', \ $forged_sos);
+$segment = $::cname->new('Post-EOI', \ $forged_sos);
 reset_mem(); $segment->output_segment_data($handle);
 is( $mem, $forged_sos, "Raw output for Post-EOI data" );
 
 #########################
-$segment = $::cname->new(undef, 'SOI');
+$segment = $::cname->new('SOI');
 reset_mem(); $segment->output_segment_data($handle);
 is( $mem, $soi, "Correct output for SOI" );
 
 #########################
-$segment = $::cname->new(undef, 'EOI');
+$segment = $::cname->new('EOI');
 reset_mem(); $segment->output_segment_data($handle);
 is( $mem, $eoi, "Correct output for EOI" );
 
@@ -201,11 +206,32 @@ $result = $segment->search_record_value($name, $name);
 is_deeply( $dirrec, $result, "... search_record alternative syntax OK" );
 
 #########################
+$segment = $::cname->new('APP8', \ '', 'NOPARSE');
+$dirrec = $segment->provide_subdirectory('A@B@C');
+$record = $segment->search_record_value('A', '', 'B@', '@', '@C');
+is( $dirrec, $record, "Spurious args in search_record_value() ignored" );
+
+#########################
+$dirrec = $segment->provide_subdirectory('AA@@', 'BB@CC', undef, 'DD');
+$record = $segment->search_record_value('AA@BB@CC@DD');
+is( $dirrec, $record, "Spurious args in provide_subdirectory() ignored" );
+
+#########################
+$dirrec = $segment->provide_subdirectory('a@b@c');
+$record = $segment->search_record_value(undef, 'a', '', 'b@', '@c', undef);
+is( $dirrec, $record, "search_record_value() resists to undef's" );
+
+#########################
+$dirrec = $segment->provide_subdirectory(undef, 'aa@', '@bb@cc', undef);
+$record = $segment->search_record_value('aa@bb@cc');
+is( $dirrec, $record, "provide_subdirectory() resists to undef's" );
+
+#########################
 $record = $segment->create_record('uno', $ASCII, \ $data);
 is( $record->get_value(), $data, "create_record ok [ref]" );
 
 #########################
-$segment = $::cname->new(undef, 'COM', \ $data);
+$segment = $::cname->new('COM', \ $data);
 $record = $segment->create_record('uno', $ASCII, 0, length $data);
 is( $record->get_value(), $data, "create_record ok [offset]" );
 
@@ -228,33 +254,58 @@ $result = $segment->search_record_value('tre', $dirrec);
 is( $result, $data, "store_record  ok [offset]" );
 
 #########################
-$segment = $::cname->new(undef, 'APP0', \ ($APP0_JFXX_TAG . chr($APP0_JFXX_1B).
+$segment = $::cname->new('APP0', \ ($APP0_JFXX_TAG . chr($APP0_JFXX_1B).
 				    "\100\040". 'x' x ($APP0_JFXX_PAL+2048)) );
 is( $segment->{error}, undef, "The faboulous 1B-JFXX APP0 segment" );
 
 ######################### Patent-covered, impossible-to-find segments
-$segment = $::cname->new(undef, 'DAC', \ "\012\345\274\333");
+$segment = $::cname->new('DAC', \ "\012\345\274\333");
 is( $segment->{error}, undef, "A fake DAC segment" );
 
 #########################
-$segment = $::cname->new(undef, 'DAC', \ "\012\345\274");
+$segment = $::cname->new('DAC', \ "\012\345\274");
 isnt( $segment->{error}, undef, "An invalid DAC segment" );
 
 #########################
-$segment = $::cname->new(undef, 'EXP', \ "\345");
+$segment = $::cname->new('EXP', \ "\345");
 is( $segment->{error}, undef, "A fake EXP segment" );
 
 #########################
-$segment = $::cname->new(undef, 'EXP', \ "\012\345");
+$segment = $::cname->new('EXP', \ "\012\345");
 isnt( $segment->{error}, undef, "An invalid EXP segment" );
 
 #########################
-$segment = $::cname->new(undef, 'DNL', \ "\012\345");
+$segment = $::cname->new('DNL', \ "\012\345");
 is( $segment->{error}, undef, "A fake DNL segment" );
 
 #########################
-$segment = $::cname->new(undef, 'DNL', \ "\012\345\274");
+$segment = $::cname->new('DNL', \ "\012\345\274");
 isnt( $segment->{error}, undef, "An invalid DNL segment" );
+
+#########################
+{ local $SIG{'__WARN__'} = sub { $problem = shift; };
+  $problem = undef; $segment->warn('Fake warning'); }
+ok( $problem, "Generation of warning reports works" );
+
+#########################
+{ local $SIG{'__WARN__'} = sub { $problem = shift; };
+  eval '$'."$::pkgname".'::show_warnings = undef';
+  $problem = undef; $segment->warn('Fake warning');
+  eval '$'."$::pkgname".'::show_warnings = 1'; }
+ok( ! $problem, "Generation of warnings can be inhibited" );
+
+#########################
+$segment = $::cname->new('DNL', \ "\012\345\274");
+{ local $SIG{'__DIE__'} = sub { $problem = shift; };
+  $problem = undef; eval{$segment->update()}; }
+ok( $problem, "Generation of error reports works" );
+
+#########################
+{ local $SIG{'__DIE__'} = sub { $problem = shift; };
+  eval '$'."$::cname".'::show_warnings = undef';
+  $problem = undef; eval{$segment->update()};
+  eval '$'."$::cname".'::show_warnings = 1'; }
+ok( $problem, "Generation of errors cannot be inhibited" );
 
 ### Local Variables: ***
 ### mode:perl ***

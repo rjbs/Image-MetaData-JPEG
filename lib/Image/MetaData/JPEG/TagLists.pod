@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 
@@ -10,13 +10,14 @@
 # type "perldoc <name_of_this_file>".                     #
 ###########################################################
 
-=head1 A COLLECTION OF TAG TABLES FOR JPEG SEGMENTS
+=head1 NAME
 
-This document is an appendix to the main manual page of the
-L<Image::MetaData::JPEG> module, which the reader should refer to for
-further details and the general scope. 
+Image::MetaData::JPEG::TagLists - This document is an appendix to the main
+manual page of the L<Image::MetaData::JPEG> module, which the reader should
+refer to for further details and the general scope. This document contains
+a collection of tag tables for JPEG segments.
 
-=head2 Valid tags for Exif APP1 data
+=head1 Valid tags for Exif APP1 data
 
 The Japan Electronics and Information Technology Industries Association
 (JEITA) set up a standard for an exchange format for digital still cameras
@@ -27,7 +28,7 @@ introduced in the L<Structure|Image::MetaData::JPEG::Structures/Structure
 of an Exif APP1 segment> appendix; this section and its subsections list
 the valid interoperability record tags as well as their format.
 
-=head3 Canonical Exif 2.2 and TIFF 6.0 tags for IFD0 and IFD1
+=head2 Canonical Exif 2.2 and TIFF 6.0 tags for IFD0 and IFD1
 
 In general, IFD0 and IFD1 can host tags from the same set. These tags are
 divided in three categories: canonical, additional and registered to
@@ -99,7 +100,7 @@ notes, or by a 'T' in the thumbnail-only column.
   P  8769  ExifOffset                  L 1   MMMM OOOO   calculated
   P  8825  GPSInfo                     L 1   OOOO OOOO   calculated
 
-=head3 Additional TIFF 6.0 tags not in Exif 2.2 for IFD0
+=head2 Additional TIFF 6.0 tags not in Exif 2.2 for IFD0
 
 The tags listed in the following table are present in the TIFF 6.0 standard
 and not in the Exif 2.2 standard. They are presented here just for
@@ -176,7 +177,7 @@ because it depends on other tags).
   b   209  JPEGACTables                L -  JPEG support
   -   2bc  XML_Packet                  B -  [Adobe XMP technote 9-14-02]
 
-=head3 Exif tags assigned to companies for IFD0 and IFD1
+=head2 Exif tags assigned to companies for IFD0 and IFD1
 
 The tags listed in the following table, all with a value larger than
 0x8000, i.e. 32000, were requested by individual companies and assigned to
@@ -267,7 +268,7 @@ TIFF/EP tags which are also Exif are not listed here).
   c44f  PhotoshopAnnotations        ? ?  [Adobe Photoshop                     ]
   ffff  DCSHueShiftValues           ? ?  [Eastman Kodak                       ]
 
-=head3 Exif tags for the 0th IFD Exif private subdirectory
+=head2 Exif tags for the 0th IFD Exif private subdirectory
 
 The tags listed in the following table are all the Exif 2.2 private tags,
 i.e., those which populate the 0th IFD SubIFD; they are described at length
@@ -318,16 +319,16 @@ automatically, more reliably).
   g  9209  Flash                       S 1   RRRR see note 5)
   g  920a  FocalLength                 R 1   OOOO in millimetres
   g  9214  SubjectArea                 S -   OOOO see note 6)
-  d  927c  MakerNote                   U -   OOOO maker-specific (not checked)
+  d  927c  MakerNote                   U -   OOOO calculated
   d  9286  UserComment                 U -   OOOO see note 7)
   f  9290  SubSecTime                  A -   OOOO see note 8)
   f  9291  SubSecTimeOriginal          A -   OOOO see note 8)
   f  9292  SubSecTimeDigitized         A -   OOOO see note 8)
   a  a000  FlashpixVersion             U 4   MMMM see note 2)
   b  a001  ColorSpace                  S 1   MMMM valid values are 1 and 65535
-  c  a002  PixelXDimension             I 1   NNNM picture X-dim from SOS 
-  c  a003  PixelYDimension             I 1   NNNM picture Y-dim from SOS
-  e  a004  RelatedSoundFile            A 13  OOOO see note 9)
+  c  a002  PixelXDimension             I 1   NNNM picture X-dim, see note 9)
+  c  a003  PixelYDimension             I 1   NNNM picture Y-dim, see note 9)
+  e  a004  RelatedSoundFile            A 13  OOOO see note 10)
   h  a005  InteroperabilityOffset      L 1   NNNO calculated by the module
   g  a20b  FlashEnergy                 R 1   OOOO in BCPS
   g  a20c  SpatialFrequencyResponse    U -   OOOO see ISO 12233
@@ -339,7 +340,7 @@ automatically, more reliably).
   g  a217  SensingMethod               S 1   OOOO valid values are 1-5,7 and 8
   g  a300  FileSource                  U 1   OOOO only allowed value is 3
   g  a301  SceneType                   U 1   OOOO only allowed value is 1
-  g  a302  CFAPattern                  U -   OOOO see note 10)
+  g  a302  CFAPattern                  U -   OOOO see note 11)
   g  a401  CustomRendered              S 1   OOOO valid values are 0 and 1
   g  a402  ExposureMode                S 1   RRRR valid values are 0,1 and 2
   g  a403  WhiteBalance                S 1   RRRR valid values are 0 and 1
@@ -350,7 +351,7 @@ automatically, more reliably).
   g  a408  Contrast                    S 1   OOOO valid values are 0,1 and 2
   g  a409  Saturation                  S 1   OOOO valid values are 0,1 and 2
   g  a40a  Sharpness                   S 1   OOOO valid values are 0,1 and 2
-  g  a40b  DeviceSettingDescription    U -   OOOO see note 11)
+  g  a40b  DeviceSettingDescription    U -   OOOO see note 12)
   g  a40c  SubjectDistanceRange        S 1   OOOO valid values are 0,1,2 and 3
   h  a420  ImageUniqueID               A 33  OOOO matches /[0-9a-fA-F]+\000+/
 
@@ -401,16 +402,19 @@ automatically, more reliably).
      be appended to the numeric characters string. If sub-second data is not
      known the tag value may contain only spaces. The corresponding regular
      expression is /\d*\s*\000/.
-  9) This tag is used to record the name of an audio file related to the
+  9) This is the valid width or height of the meaningful image (horizontal
+     dimension does not include data padding). Overall image dimensions can
+     be read in the SOF segment (this includes padding however).
+ 10) This tag is used to record the name of an audio file related to the
      image data: an ASCII string consisting of 8 characters + '.' + 3
      characters, terminated by NULL. The path is not recorded.
      The corresponding regular expression is /\w{8}\.\w{3}\000/.
- 10) This tag indicates the colour filter array (CFA) geometric pattern of
+ 11) This tag indicates the colour filter array (CFA) geometric pattern of
      the image sensor when a one-chip colour area sensor is used. The first
      four bytes must be interpreted as two shorts giving the horizontal (m)
      and vertical (n) repeat pixel units. Then, m x n bytes follow, giving
      the actual colour filter values (in the range 0-6).
- 11) This tag indicates information on the picture-taking conditions of a
+ 12) This tag indicates information on the picture-taking conditions of a
      particular camera model, for a reader. The first four bytes must be
      interpreted as two shorts giving the number of display rows and columns.
      The following bytes must be interpreted as Unicode (UCS-2) streams,
@@ -442,7 +446,7 @@ themselves. The following might be an incomplete list:
     fe57  _Smoothness     A -   "Smoothness: "    + null terminated string
     fe58  _MoireFilter    A -   "Moire Filter: "  + null terminated string
 
-=head3 Exif tags for the 0th IFD Interoperability subdirectory
+=head2 Exif tags for the 0th IFD Interoperability subdirectory
 
 If the main image is compressed (which is always the case for a JPEG
 picture), the "Design rule for Camera File system"
@@ -466,7 +470,7 @@ are automatically added by this module if necessary.
      1001  RelatedImageWidth           I 1 NNNO   image X dimension
      1002  RelatedImageLength          I 1 NNNO   image Y dimension
 
-=head3 Exif tags for the 0th IFD GPS subdirectory
+=head2 Exif tags for the 0th IFD GPS subdirectory
 
 The following tags are used for GPS attributes in the GPS IFD, pointed to
 (if present) by the GPSInfo tag in IFD0 or IFD1. This standard was already
@@ -544,7 +548,7 @@ i.e. v.2.2, is automatically added by this module if necessary).
      'U' means Unicode and a null character means undefined. Since the type
      is not ASCII, null termination is not required.
 
-=head2 Valid tags for Photoshop-style APP13 data
+=head1 Valid tags for Photoshop-style APP13 data
 
 The structure of a Photoshop-style APP13 segment is introduced in section
 L<Image::MetaData::JPEG::Structures/Structure of a Photoshop-style APP13
@@ -612,7 +616,7 @@ Photoshop, and 'Pstring' for Pascal string:
       bb7  ClippingPathName           see additional Adobe info
      2710  PrintFlagsInfo             see additional Adobe info
 
-=head3 Valid tags for IPTC data
+=head2 Valid tags for IPTC data
 
 The structure of an IPTC stream is introduced in section
 L<Image::MetaData::JPEG::Structures/Structure of an IPTC data block>. This
@@ -645,7 +649,7 @@ C-strings).
    20  SupplementalCategory            [ <=32 ] line (see note 1)
    22  FixtureIdentifier             N [ <=32 ] line without spaces
    25  Keywords                        [ <=64 ] line (see note 1)
-   26  ContentLocationCode             [  3   ] /[A-Z]{3}?/
+   26  ContentLocationCode             [  3   ] /[A-Z]{3}/
    27  ContentLocationName             [ <=64 ] line (see note 1)
    30  ReleaseDate                   N [  8   ] date (see note 2)
    35  ReleaseTime                   N [ 11   ] time (see note 3)
@@ -714,7 +718,7 @@ Stefano Bettelli, B<bettelli@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2004 by Stefano Bettelli
+Copyright (C) 2004,2005 by Stefano Bettelli
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU L<General Public License|perlgpl>. See the

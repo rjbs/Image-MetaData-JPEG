@@ -64,8 +64,8 @@ is( $$hash2{$name}[0], length $$dataref,"... and is correct");
 
 #########################
 $hash2 = $image->get_Exif_data('ALL', 'TEXTUAL');
-delete $$hash{'APP1'};             delete $$hash2{'APP1'};
-delete $$hash{'APP1@IFD1'}{$name}; delete $$hash2{'APP1@IFD1'}{$name};
+delete $$hash{'ROOT_DATA'};        delete $$hash2{'ROOT_DATA'};
+delete $$hash{'IFD1_DATA'}{$name}; delete $$hash2{'IFD1_DATA'}{$name};
 is_deeply( $hash, $hash2, "All other tags unchanged" );
 
 #########################

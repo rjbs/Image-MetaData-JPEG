@@ -33,7 +33,7 @@ is( $image->retrieve_app13_segment(1, $shop), undef, "Out-of-bound index" );
 
 #########################
 $seg1 = $image->retrieve_app13_segment(0, $shop);
-$seg1->{name} = "ggggg"; # mask it for a moment
+$seg1->{name} = "APP11"; # a trick to mask the segment name
 $seg2 = $image->provide_app13_segment($shop);
 $seg1->{name} = "APP13"; # we have two APP13 segs now
 is( $image->retrieve_app13_segment(-1, $shop), 2, "2 Photoshop segments now" );

@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG;
@@ -67,11 +67,10 @@ sub get_comments {
 ###########################################################
 sub add_comment {
     my ($this, $string) = @_;
-    # create one or more comment blocks, based on the user string
-    # (the string must be split if it is too long). (remember
-    # about the new 'parental' link in the Segement ctor)
+    # create one or more comment blocks, based on the user
+    # string; the string must be split if it is too long.
     my @new_comments = 
-	map { new Image::MetaData::JPEG::Segment($this, "COM", \ $_) }
+	map { new Image::MetaData::JPEG::Segment("COM", \ $_) }
         split_comment_string($string);
     # get the list of comment indexes
     my @indexes = $this->get_segments('COM', 'INDEXES');
@@ -94,20 +93,19 @@ sub add_comment {
 sub set_comment {
     my ($this, $index, $string) = @_;
     # return immediately if $index is negative or undefined
-    return warn "Undefined index in set_comment" unless defined $index;
-    return warn "Negative index ($index) in set_comment" if $index < 0;
+    return $this->warn('Undefined $index') unless defined $index;
+    return $this->warn("Negative index ($index)") if $index < 0;
     # get the list of comment segment indexes
     my @indexes = $this->get_segments('COM', 'INDEXES');
     # if $index is out of bound, warn and return. 
-    return warn "Index $index out of bound ($#indexes) in set_comment" 
+    return $this->warn("Index $index out of bound [0,$#indexes]")
 	if ($#indexes < $index);
     # otherwise, set an index to the target comment segment
     my $position = $indexes[$index];
-    # create one or more comment blocks, based on the user string
-    # (the string must be split if it is too long). (remember
-    # about the new 'parental' link in the Segement ctor)
+    # create one or more comment blocks, based on the user
+    # string; the string must be split if it is too long.
     my @new_comments = 
-	map { new Image::MetaData::JPEG::Segment($this, "COM", \ $_) }
+	map { new Image::MetaData::JPEG::Segment('COM', \ $_) }
         split_comment_string($string);
     # replace the target segment with the new segments created
     # from the user string; @new_comments is the void list if
@@ -129,10 +127,8 @@ sub remove_comment {
 }
 
 ###########################################################
-# This method eliminates all comment segments currently   #
-# present in the file. It does not call set_comment, but  #
-# accesses the list directly (faster). It is now only a   #
-# wrapper around the drop_segments method.                #
+# This method (a wrapper around the drop_segments method) #
+# eliminates all comments currently present in the pic.   #
 ###########################################################
 sub remove_all_comments {
     my ($this) = @_;
@@ -172,11 +168,11 @@ sub join_comments {
 	if    (! defined $_)         { $error = "Undefined comment index"; }
 	elsif ($_ =~ /[^\d]/)        { $error = "'$_' not a whole number"; }
 	elsif ($_<0 || $_>$#indexes) { $error = "index $_ out of range"; }
-	die "$error in join_comments: discarding index" if defined $error;
+	$this->die("$error: discarding index") if defined $error;
 	defined $error ? () : $_;
     } @selection;
     # return immediately if @selection is empty
-    die "No valid comment indexes in join_comments" unless @selection;
+    $this->die('No valid comment indexes') unless @selection;
     # concatenate valid comments in a single string (write a copy
     # of the separation string between every two comments).
     my $joint_comment = join $separation, map { $comments[$_] } @selection;

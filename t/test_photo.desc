@@ -16,8 +16,8 @@ Original JPEG file: t/test_photo.jpg
  	[               Identifier]<......> = [    ASCII] "Exif\00".
  	[               Endianness]<......> = [    UNDEF] 'MM'
  	[                Signature]<......> = [    SHORT]  42
- 	[                     IFD0]<......> = [REFERENCE]  --> 8293978
- 	[                     IFD1]<......> = [REFERENCE]  --> 832dfa8
+ 	[                     IFD0]<......> = [REFERENCE]  --> 0x835ead8
+ 	[                     IFD1]<......> = [REFERENCE]  --> 0x835eaf0
  	[            ThumbnailData]<......> = [    UNDEF] '\ff\d8\ff\db\00\84\00\09\09\09\09\09\09'  (3909 more chars)
  	 	********** APP1 --> IFD0 ********** ( 9 records)
  	 	[                     Make]<0x010f> = [    ASCII] "EASTMAN KODAK COMPANY".
@@ -27,8 +27,8 @@ Original JPEG file: t/test_photo.jpg
  	 	[              YResolution]<0x011b> = [ RATIONAL]  230/1
  	 	[           ResolutionUnit]<0x0128> = [    SHORT]  2
  	 	[         YCbCrPositioning]<0x0213> = [    SHORT]  1
- 	 	[                   SubIFD]<......> = [REFERENCE] <ExifOffset> --> 832c010
- 	 	[                      GPS]<......> = [REFERENCE] <GPSInfo> --> 832dfcc
+ 	 	[                   SubIFD]<......> = [REFERENCE] <ExifOffset> --> 0x83744dc
+ 	 	[                      GPS]<......> = [REFERENCE] <GPSInfo> --> 0x837afb8
  	 	 	********** APP1 --> IFD0 --> SubIFD ********** (25 records)
  	 	 	[             ExposureTime]<0x829a> = [ RATIONAL]  1/45
  	 	 	[                  FNumber]<0x829d> = [ RATIONAL]  34/10
@@ -45,7 +45,6 @@ Original JPEG file: t/test_photo.jpg
  	 	 	[              LightSource]<0x9208> = [    SHORT]  0
  	 	 	[                    Flash]<0x9209> = [    SHORT]  1
  	 	 	[              FocalLength]<0x920a> = [ RATIONAL]  117/10
- 	 	 	[                MakerNote]<0x927c> = [    UNDEF] 'KDK INFODX3900  \03\02\00\00\08p\05\a0'   (900 more chars)
  	 	 	[          FlashpixVersion]<0xa000> = [    UNDEF] '0100'
  	 	 	[               ColorSpace]<0xa001> = [    SHORT]  1
  	 	 	[          PixelXDimension]<0xa002> = [    SHORT]  2160
@@ -54,7 +53,59 @@ Original JPEG file: t/test_photo.jpg
  	 	 	[            SensingMethod]<0xa217> = [    SHORT]  2
  	 	 	[               FileSource]<0xa300> = [    UNDEF] '\03'
  	 	 	[                SceneType]<0xa301> = [    UNDEF] '\01'
- 	 	 	[                  Interop]<......> = [REFERENCE] <InteroperabilityOffset> --> 832e454
+ 	 	 	[      MakerNoteData_Kodak]<......> = [REFERENCE] <MakerNote> --> 0x837b24c
+ 	 	 	[                  Interop]<......> = [REFERENCE] <InteroperabilityOffset> --> 0x837b348
+ 	 	 	 	********** APP1 --> IFD0 --> SubIFD --> MakerNoteData_Kodak ********** (45 records)
+ 	 	 	 	[                  special]<......> = [REFERENCE]  --> 0x837b234
+ 	 	 	 	[                ---0x0001]<......> = [     BYTE]  3
+ 	 	 	 	[              Compression]<......> = [     BYTE]  2
+ 	 	 	 	[                BurstMode]<......> = [     BYTE]  0
+ 	 	 	 	[                MacroMode]<......> = [     BYTE]  0
+ 	 	 	 	[          PixelXDimension]<......> = [    SHORT]  2160
+ 	 	 	 	[          PixelYDimension]<......> = [    SHORT]  1440
+ 	 	 	 	[                     Year]<......> = [    SHORT]  2000
+ 	 	 	 	[                    Month]<......> = [     BYTE]  11
+ 	 	 	 	[                      Day]<......> = [     BYTE]  4
+ 	 	 	 	[                     Hour]<......> = [     BYTE]  6
+ 	 	 	 	[                   Minute]<......> = [     BYTE]  36
+ 	 	 	 	[                   Second]<......> = [     BYTE]  53
+ 	 	 	 	[                SubSecond]<......> = [     BYTE]  17
+ 	 	 	 	[           ---BurstMode_2]<......> = [    SHORT]  0
+ 	 	 	 	[                ---0x0012]<......> = [     BYTE]  0
+ 	 	 	 	[              ShutterMode]<......> = [     BYTE]  0
+ 	 	 	 	[             MeteringMode]<......> = [     BYTE]  2
+ 	 	 	 	[       BurstSequenceIndex]<......> = [     BYTE]  0
+ 	 	 	 	[                  FNumber]<......> = [    SHORT]  351
+ 	 	 	 	[             ExposureTime]<......> = [     LONG]  2026
+ 	 	 	 	[        ExposureBiasValue]<......> = [   SSHORT]  0
+ 	 	 	 	[        ---VariousModes_2]<......> = [    SHORT]  65535
+ 	 	 	 	[            ---Distance_1]<......> = [     LONG]  7125
+ 	 	 	 	[            ---Distance_2]<......> = [     LONG]  7125
+ 	 	 	 	[            ---Distance_3]<......> = [     LONG]  6750
+ 	 	 	 	[            ---Distance_4]<......> = [     LONG]  6750
+ 	 	 	 	[                FocusMode]<......> = [     BYTE]  0
+ 	 	 	 	[                ---0x0031]<......> = [     BYTE]  2
+ 	 	 	 	[        ---VariousModes_3]<......> = [    SHORT]  64511
+ 	 	 	 	[             PanoramaMode]<......> = [    SHORT]  0
+ 	 	 	 	[          SubjectDistance]<......> = [    SHORT]  150
+ 	 	 	 	[             WhiteBalance]<......> = [     BYTE]  0
+ 	 	 	 	[                ---0x0039]<......> = [    UNDEF] '\01\00\06\00\00\00\00\00\00\00\00\00\00'  (14 more chars)
+ 	 	 	 	[                FlashMode]<......> = [     BYTE]  3
+ 	 	 	 	[               FlashFired]<......> = [     BYTE]  1
+ 	 	 	 	[             ISOSpeedMode]<......> = [    SHORT]  400
+ 	 	 	 	[ ---ISOSpeedExposureIndex]<......> = [    SHORT]  400
+ 	 	 	 	[          TotalZoomFactor]<......> = [    SHORT]  160
+ 	 	 	 	[        DateTimeStampMode]<......> = [    SHORT]  0
+ 	 	 	 	[               ColourMode]<......> = [    SHORT]  1
+ 	 	 	 	[        DigitalZoomFactor]<......> = [    SHORT]  100
+ 	 	 	 	[                ---0x0062]<......> = [     BYTE]  0
+ 	 	 	 	[                Sharpness]<......> = [     BYTE]  1
+ 	 	 	 	[                   binary]<......> = [    UNDEF] '\ff\fe\fb\fd\f7\ff\fd\ff\ff\ff\ff\fd\ff'  (795 more chars)
+ 	 	 	 	 	********** APP1 --> IFD0 --> SubIFD --> MakerNoteData_Kodak --> special ********** ( 4 records)
+ 	 	 	 	 	[                 ORIGINAL]<......> = [    UNDEF] 'KDK INFODX3900  \03\02\00\00\08p\05\a0'   (900 more chars)
+ 	 	 	 	 	[                SIGNATURE]<......> = [    UNDEF] 'KDK INFODX3900  '
+ 	 	 	 	 	[               ENDIANNESS]<......> = [    UNDEF] 'MM'
+ 	 	 	 	 	[                   FORMAT]<......> = [    UNDEF] 'Kodak'
  	 	 	 	********** APP1 --> IFD0 --> SubIFD --> Interop ********** ( 2 records)
  	 	 	 	[    InteroperabilityIndex]<0x0001> = [    ASCII] "R98".
  	 	 	 	[  InteroperabilityVersion]<0x0002> = [    UNDEF] '0100'
@@ -78,8 +129,8 @@ Original JPEG file: t/test_photo.jpg
  	[               Identifier]<......> = [    ASCII] "ICC_PROFILE".
  	[           SequenceNumber]<......> = [     BYTE]  1
  	[              TotalNumber]<......> = [     BYTE]  1
- 	[            ProfileHeader]<......> = [REFERENCE]  --> 832f808
- 	[                 TagTable]<......> = [REFERENCE]  --> 8333608
+ 	[            ProfileHeader]<......> = [REFERENCE]  --> 0x8381be8
+ 	[                 TagTable]<......> = [REFERENCE]  --> 0x83862a8
  	 	********** APP2 --> ProfileHeader ********** (21 records)
  	 	[        CMM_TypeSignature]<......> = [    ASCII] "Lino"
  	 	[     ProfileVersionNumber]<......> = [    UNDEF] '\02\10\00\00'
@@ -122,8 +173,8 @@ Original JPEG file: t/test_photo.jpg
  	 	[                  BlueTRC]<0x62545243> = [    UNDEF] <curv>'\00\00\04\00\00\00\00\05\00\0a\00\0f\00'  (2039 more chars)
    5444B <0xed APP13>
  	[               Identifier]<......> = [    ASCII] "Photoshop 3.0".
- 	[             IPTC_RECORDS]<......> = [REFERENCE]  --> 8336590
- 	[        Photoshop_RECORDS]<......> = [REFERENCE]  --> 83398d8
+ 	[             IPTC_RECORDS]<......> = [REFERENCE]  --> 0x838825c
+ 	[        Photoshop_RECORDS]<......> = [REFERENCE]  --> 0x838c878
  	 	********** APP13 --> IPTC_RECORDS ********** (18 records)
  	 	[            RecordVersion]<0x0000> = [    ASCII] "\00\02"
  	 	[         Caption/Abstract]<0x0078> = [    ASCII] "Communications"

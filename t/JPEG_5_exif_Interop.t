@@ -87,7 +87,6 @@ is_deeply( $hash, {}, "adding without the Interop. dir" );
 $ref = \ "dummy";
 $image->save($ref);
 $image2 = $cname->new($ref, '^(APP1|SOS)$');
-$_->{parent} = $image for @{$image2->{segments}}; # parental link hack
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################
@@ -155,7 +154,6 @@ is_deeply( $hash2, $hash, "same result after deleting Exif data and forging");
 #########################
 $image->save($ref);
 $image2 = $cname->new($ref, '^(APP1|SOS)$');
-$_->{parent} = $image for @{$image2->{segments}}; # parental link hack
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 ### Local Variables: ***

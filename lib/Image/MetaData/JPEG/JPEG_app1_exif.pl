@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG;
@@ -54,17 +54,12 @@ sub provide_app1_Exif_segment {
     # and initialised (contrary to the IPTC case, an existing APP1
     # segment, presumably XPM, cannot be "adapted"). We write here
     # a minimal Exif segment with no data at all (in big endian).
-    # (remember about the new 'parental' link in the Segment ctor).
     my $minimal_exif = $APP1_EXIF_TAG . $BIG_ENDIAN
 	. pack "nNnN", $APP1_TIFF_SIG, 8, 0, 0;
-    my $Exif = new Image::MetaData::JPEG::Segment
-	($this, 'APP1', \ $minimal_exif);
-    # choose a position for the new segment. I don't want to use
-    # the standard routine for this, because the APP1 segment 
-    # should be at the beginning. So, I put it in position 1
-    # (or 2 if this is occupied by an APP0 segment).
-    my @app0s = $this->get_segments('APP0$', "INDEXES");
-    my $position = (@app0s && $app0s[0] == 1) ? 2 : 1;
+    my $Exif = new Image::MetaData::JPEG::Segment('APP1', \ $minimal_exif);
+    # choose a position for the new segment (the improved version
+    # of find_new_app_segment_position can now be safely used).
+    my $position = $this->find_new_app_segment_position('APP1');
     # actually insert the segment
     $this->insert_segments($Exif, $position);
     # return a reference to the new segment
@@ -166,13 +161,15 @@ use Image::MetaData::JPEG::Tables qw(:Lookups);
 
 ###########################################################
 # A private hash for get_Exif_data and set_Exif_data.     #
+# Each '@' indicates the beginning of a new subdirectory. #
 ###########################################################
-my %WHAT2IFD = ('ROOT_DATA'    => 'APP1',
-		'IFD0_DATA'    => 'APP1@IFD0',
-		'SUBIFD_DATA'  => 'APP1@IFD0@SubIFD',
-		'GPS_DATA'     => 'APP1@IFD0@GPS',
-		'INTEROP_DATA' => 'APP1@IFD0@SubIFD@Interop',
-		'IFD1_DATA'    => 'APP1@IFD1' );
+my %WHAT2IFD = ('ROOT_DATA'      => '',
+		'IFD0_DATA'      => '@IFD0',
+		'SUBIFD_DATA'    => '@IFD0@SubIFD',
+		'GPS_DATA'       => '@IFD0@GPS',
+		'INTEROP_DATA'   => '@IFD0@SubIFD@Interop',
+		'MAKERNOTE_DATA' => '@IFD0@SubIFD@MakerNoteData',
+		'IFD1_DATA'      => '@IFD1' );
 
 ###########################################################
 # This method inspects a segments, and returns "undef" if #
@@ -262,8 +259,8 @@ sub get_Exif_data {
 	    @$pairs{keys %$h} = values %$h; } return $pairs; }
     # ALL means a hash of hashes with all subdirs (even if emtpy)
     if ($what eq 'ALL') {
-	$$pairs{$WHAT2IFD{$_}} = $this->get_Exif_data($_, $type)
-	    for keys %WHAT2IFD; return $pairs; }
+	$$pairs{$_} = $this->get_Exif_data($_, $type) for keys %WHAT2IFD;
+	return $pairs; }
     # $what equal to 'THUMBNAIL' is special: it returns a copy of the
     # thumbnail data area (this can be a self-contained JPEG picture
     # or an uncompressed picture needing more parameters from IFD1).
@@ -278,14 +275,19 @@ sub get_Exif_data {
     # time to reject unknown sections ('THUMBNAIL' already dealt with).
     # As usual, this error condition corresponds to returning undef.
     return undef unless exists $WHAT2IFD{$what};
-    # $path contains a '@' separated list of dir names; use it
-    # to retrieve a reference to the appropriate record list
+    # $WHAT2IFD{$what} contains a '@' separated list of dir names;
+    # use it to retrieve a reference to the appropriate record list
     my $path = $WHAT2IFD{$what};
-    # search_record works without the initial part (i.e., APP1@ ...)
-    my $dirnames = $path; $dirnames =~ s/^($this->{name}@?)(.*)$/$2/;
     # follow the path blindly, get undef on problems
-    my $dirref = $path eq $this->{name} ? $this->{records} :
-	$this->search_record_value($dirnames);
+    my $dirref = $this->search_record_value($path);
+    # give $path a second try, assuming the last part of the path
+    # is just the beginning of a tag (this is needed for MakerNote).
+    # This might modify $path and set $dirref to non-undefined.
+    unless (defined $dirref) {
+	$path =~ s/(.*@|)([^@]*)/$1/;
+	my $partial_dirref = $this->search_record_value($path);
+	$path .= $_->{key}, $dirref = $_->get_value(), last
+	    for (grep{$_->{key}=~/^$2/} @$partial_dirref);}
     # if $dirref is undefined, the corresponding subdirectory was not
     # present, and we are going to return a reference to an empty hash
     return $pairs unless $dirref;
@@ -295,15 +297,15 @@ sub get_Exif_data {
     # (the caller could use them to corrupt the internal structures).
     %$pairs = map  { $_->{key} => [ @{$_->{values}} ] }
               grep { $_->{type} != $REFERENCE } @$dirref;
-    # up to now, all record keys (tags) are numeric (exception made
-    # for keys in the "root" directory, for which there is no numeric
-    # counterpart). If $type is 'TEXTUAL', they must be translated.
-    if ($type eq "TEXTUAL" && $path ne $this->{name}) {
-	# select the appropriate numeric-to-textual
-	# conversion table by looking at the $path
-	my $table = JPEG_lookup($path);
+    # up to now, all record keys (tags) are numeric (exception made for
+    # some MakerNote keys and all keys in the "root" directory, for which
+    # there is no numeric counterpart). If $type is 'TEXTUAL', they must
+    # be translated (test explicitely that they are numeric).
+    if ($type eq "TEXTUAL") {
+	# get the right numeric-to-textual conversion table with $path
+	my $table = JPEG_lookup($this->{name}, $path);
 	# run the translation (create a name also for unknown tags)
-	%$pairs = map { (exists $$table{$_} ? $$table{$_} :
+	%$pairs = map { (($_!~/^\d+$/)?$_:(exists $$table{$_}) ? $$table{$_} :
 			 "Unknown_tag_$_") => $$pairs{$_} } keys %$pairs; }
     # return the reference to the hash containing all data
     return $pairs;
@@ -398,7 +400,7 @@ sub set_Exif_data {
     # return with an error if $what is not a valid key in %WHAT2IFD
     return {'ERROR'=>"Unknown section $what"} unless exists $WHAT2IFD{$what};
     # translate $what into a path specification
-    my $path = $WHAT2IFD{$what};
+    my $path = 'APP1' . $WHAT2IFD{$what};
     # the mandatory records list must be present (debug point)
     return {'ERROR'=>'no $mandatory records'} unless exists
 	$IFD_SUBDIRS{$path}{'__mandatory'};
@@ -416,15 +418,15 @@ sub set_Exif_data {
     # If $action is 'REPLACE' we preserve only the subdirectories
     my $save = $action eq 'REPLACE' ? 'p' : '.';
     my $old_records = [ grep {$_->get_category() =~ $save} @$record_list ];
-    complement_records($old_records, $accepted);
+    $this->complement_records($old_records, $accepted);
     # retrieve the section about mandatory values for this $path and transform
     # them into Records (there is also a syntactical analysis, but all records
     # should be accepted here, so I take the return value in scalar context).
     # ('B' is currently necessary for stupid root-level mandatory records)
     my ($notempty, $values) = $this->screen_records($mandatory, $path, 'B');
-    die "Internal error (mandatory values rejected)" if %$notempty;
+    $this->die('Mandatory values rejected') if %$notempty;
     # merge in mandatory records, if they are not already present
-    complement_records($values, $accepted);
+    $this->complement_records($values, $accepted);
     # take all records from $accepted and set them into the record
     # list (their order must anambiguous, so perform a clever sorting).
     @$record_list = ordered_record_list($accepted, $path);
@@ -493,7 +495,7 @@ sub set_Exif_thumbnail {
 	# $rej must be an empty hash, or we have a problem
 	return { 'Error' => 'Records rejected internally! [JPEG]' } if %$rej;
 	# add all other old (non-thumbnail-related) records
-	complement_records($ifd1_list, $accepted);
+	$this->complement_records($ifd1_list, $accepted);
 	# add the 'JPEGInterchangeFormat' record (an offset). This is really
 	# dummy, it is here to trigger the correct behaviour in update(), but
 	# I really should modify update() to make it calculate the field on
@@ -546,19 +548,16 @@ sub ordered_record_list {
 sub build_IFD_directory_tree {
     my ($this, $dirnames) = @_;
     # split the passed string into tokens on '@'
-    my @dirnames = split '@', $dirnames;
-    # the first token is to be singled out. It should always
-    # correspond to the segment name, so we force a check here
-    my $first = shift @dirnames;
-    die "Incorrect segment name in build_directory_tree ($first)"
-	unless $first eq $this->{name};
+    my ($first, @dirnames) = split '@', $dirnames;
+    # the first token must correspond to the segment name
+    $this->die("Incorrect segment ($first)") unless $first eq $this->{name};
+    # build the whole directory tree, as requested
+    $this->provide_subdirectory(@dirnames);
     # prepare two "running" variables
     my $dirref = $this->{records};
     my $path = $first;
-    # travel through the token list and create the tree
+    # travel through the token list and fix the tree
     for my $name (@dirnames) {
-	# this call creates subdir $name in $dirref if absent
-	$this->provide_subdirectory($name, $dirref);
 	# get the $REFERENCE record for the subdir $name
 	my $record = $this->search_record($name, $dirref);
 	# if there is information in %IFD_SUBDIR ...
@@ -579,16 +578,15 @@ sub build_IFD_directory_tree {
 }
 
 ###########################################################
-# This helper private function takes a reference to a Re- #
-# cord list or hash and a reference to a Record hash, and #
-# inserts all records from the first container into the   #
-# hash, unless its key is already present.                #
+# This private method takes a reference to a Record list  #
+# or hash and a reference to a Record hash, and inserts   #
+# all records from the first container into the hash,     #
+# unless its key is already present.                      #
 ###########################################################
 sub complement_records {
-    my ($record_container, $record_hash) = @_;
+    my ($this, $record_container, $record_hash) = @_;
     # be sure that the first argument is not a scalar
-    die "first argument in complement records is not a reference"
-	unless ref $record_container;
+    $this->die('first arg. not a reference') unless ref $record_container;
     # get a record list from the record container
     my $record_list = (ref $record_container eq 'HASH') ?
 	[ values %$record_container ] : $record_container;
@@ -620,7 +618,7 @@ sub complement_records {
 #---------------------------------------------------------#
 # New feature: if the record value is a code reference    #
 # instead of an array reference, the corresponding code   #
-# is executed (passing the optional value $optional) and  #
+# is executed (passing the segment reference through) and #
 # the result is stored. This is necessary for mandatory   #
 # records which need to know the current segment.         #
 #---------------------------------------------------------#
@@ -635,13 +633,11 @@ sub screen_records {
     # prepare two hashes for rejected and accepted records
     my $rejected = {}; my $accepted = {};
     # die immediately if $data or $path are not defined
-    die "Undefined arguments to screen_records"
-	unless defined $data && defined $path;
+    $this->die('Undefined arguments') unless defined $data && defined $path;
     # get a reference to the hash with all record properties
-    die "IFD subdir supporting hash not found for $path"
-	unless exists $IFD_SUBDIRS{$path};
-    die "IFD subdir syntax specification not found for $path"
-	unless my $syntax = $IFD_SUBDIRS{$path}{'__syntax'};
+    $this->die('Supporting hash not found') unless exists $IFD_SUBDIRS{$path};
+    my $syntax = $IFD_SUBDIRS{$path}{'__syntax'};
+    $this->die('Syntax specification not found') unless $syntax;
     # loop over entries in $data and decide whether to accept them or not
     while (my ($key, $value) = each %$data) {
 	# do a key lookup and save the result

@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG;
@@ -9,25 +9,6 @@ use Image::MetaData::JPEG::Segment;
 no  integer;
 use strict;
 use warnings;
-
-###########################################################
-# These helper functions have a single argument. They fix #
-# it to some standard value, if it is undefined, then     #
-# they check that its value is a legal string and throw   #
-# an exception out if not so.                             #
-###########################################################
-my $sanitise_what   = sub {$_[0] = 'IPTC' unless defined $_[0];
-			   ($_[0] =~ /^(PHOTOSHOP|IPTC)$/) ?
-			       return 1 : die 'Unknown "what": '.$_[0]; };
-my $sanitise_type   = sub {$_[0] = 'TEXTUAL' unless defined $_[0];
-			   ($_[0] =~ /^(NUMERIC|TEXTUAL)$/) ?
-			       return 1 : die 'Unknown "type": '.$_[0]; };
-my $sanitise_action = sub {$_[0] = 'REPLACE' unless defined $_[0];
-			   ($_[0] =~ /^(ADD|UPDATE|REPLACE)$/) ?
-			       return 1 : die 'Unknown "action": '.$_[0]; };
-my $subdir_name = sub { return $APP13_IPTC_DIRNAME if $_[0] eq 'IPTC';
-		        return $APP13_PHOTOSHOP_DIRNAME if $_[0]eq 'PHOTOSHOP';
-		        die 'Invalid "what" '.$_[0]; };
 
 ###########################################################
 # This method returns a reference to the $index-th (the   #
@@ -44,8 +25,6 @@ my $subdir_name = sub { return $APP13_IPTC_DIRNAME if $_[0] eq 'IPTC';
 ###########################################################
 sub retrieve_app13_segment {
     my ($this, $index, $what) = @_;
-    # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
     # $index defaults to zero if undefined
     $index = 0 unless defined $index;
     # select all segments compatible with $what
@@ -69,8 +48,6 @@ sub retrieve_app13_segment {
 ###########################################################
 sub provide_app13_segment {
     my ($this, $what) = @_;
-    # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
     # get the list of segments selected by $what
     my @what_refs = grep { $_->is_app13_ok($what) } $this->get_segments();
     # if the list is not empty, return the first element
@@ -83,10 +60,9 @@ sub provide_app13_segment {
     # if no segment is found, we surely need to generate a new
     # one, and store it in an appropriate position in the file;
     # remember that at least the Photoshop string must be there
-    # (and remember about the 'parent' link as first argument)
     unless ($app13_segment) {
 	$app13_segment = new Image::MetaData::JPEG::Segment
-	    ($this, 'APP13', \ "$APP13_PHOTOSHOP_IDENTIFIER");
+	    ('APP13', \ "$$APP13_PHOTOSHOP_IDS[0]");
 	# insert it into the list of JPEG segments
 	# (the position is chosen automatically)
 	$this->insert_segments($app13_segment); }
@@ -107,8 +83,6 @@ sub provide_app13_segment {
 ###########################################################
 sub remove_app13_info {
     my ($this, $index, $what) = @_;
-    # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
     # this is the list of segments to be purged (initially empty)
     my @purgeme = ();
     # call the selection routine and store the segment reference
@@ -142,10 +116,6 @@ sub remove_app13_info {
 ###########################################################
 sub get_app13_data {
     my ($this, $type, $what) = @_;
-    # die on unknown $type's (default --> 'TEXTUAL' if undefined)
-    &$sanitise_type($type);
-    # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
     # get the first suitable APP13 segment in the current JPEG
     # file (this returns undef if no segment is present).
     my $segment = $this->retrieve_app13_segment(undef, $what);
@@ -161,19 +131,14 @@ sub get_app13_data {
 # suitable APP13 segment is retrieved (if there is no     #
 # such segment, one is created and initialised). Then the #
 # set_app13_data is called on this segment passing the    #
-# arguments through. If $what is invalid an exception is  #
-# thrown out. For further details, have a look at         #
+# arguments through. For further details, have a look at  #
 # Segment::set_app13_data() and provide_app13_segment().  #
 ###########################################################
 sub set_app13_data {
     my ($this, $data, $action, $what) = @_;
-    # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
-    # die on unknown $action's (default --> 'REPLACE' if undefined)
-    &$sanitise_action($action);
-    # get the first suitable APP13 segment in the current
-    # JPEG file (if there is no such segment, initialise one;
-    # therefore, this call cannot fail [mhh ...]).
+    # get the first suitable APP13 segment in the current JPEG file
+    # (if there is no such segment, initialise one; therefore, this
+    # call cannot fail unless $what is invalid [mhh ...]).
     my $segment = $this->provide_app13_segment($what);
     # pass all arguments to the Segment method
     return $segment->set_app13_data($data, $action, $what);
@@ -185,6 +150,22 @@ sub set_app13_data {
 package Image::MetaData::JPEG::Segment;
 
 ###########################################################
+# These helper functions have a single argument. They fix #
+# it to some standard value, if it is undefined, then     #
+# they check that its value is a legal string and throw   #
+# an exception out if not so.                             #
+# ------------------------------------------------------- #
+# sanitise: 0=this, 1=var, 2=name, 3=regex(1st is default)#
+###########################################################
+sub sanitise_what   { sanitise(@_, 'what'  , 'IPTC|PHOTOSHOP'    ) };
+sub sanitise_type   { sanitise(@_, 'type'  , 'TEXTUAL|NUMERIC'   ) };
+sub sanitise_action { sanitise(@_, 'action', 'REPLACE|ADD|UPDATE') };
+sub sanitise { ($_[1] = $_[3]) =~ s/^([^\|]*)\|.*$/$1/ unless defined $_[1];
+	       ($_[1] =~/^($_[3])$/) ?1: $_[0]->die("Unknown '$_[2]': $_[1]")};
+sub subdir_name { return $APP13_IPTC_DIRNAME      if $_[0] eq 'IPTC';
+		  return $APP13_PHOTOSHOP_DIRNAME if $_[0] eq 'PHOTOSHOP'; };
+
+###########################################################
 # This method inspects a segments, and return "ok" if the #
 # segment shows the required features, undef otherwise.   #
 # The features are selected by the value of $what:        #
@@ -194,20 +175,21 @@ package Image::MetaData::JPEG::Segment;
 #    $APP13_PHOTOSHOP_DIRNAME subdirectory.               #
 # 3) ($what eq 'IPTC') matches 1) and contains an         #
 #    $APP13_IPTC_DIRNAME subdirectory.                    #
+# 4) (everything else) the routine dies.                  #
 ###########################################################
 sub is_app13_ok {
     my ($this, $what) = @_;
-    # return undef if $what is not recognised (don't die)
-    return undef unless (! defined $what) || eval { &$sanitise_what($what) };
-    # return undef if this segment is not APP13
+    # intercept and die on unknown $what's (don't set a default!)
+    $this->sanitise_what(my $temp_what = $what);
+     # return undef if this segment is not APP13
     return undef unless $this->{name} eq 'APP13';
     # return undef if there is no 'Identifier' or it is not Photoshop
     my $id = $this->search_record_value('Identifier');
-    return undef unless $id && $id eq $APP13_PHOTOSHOP_IDENTIFIER;
+    return undef unless $id && grep { /^$id$/ } @$APP13_PHOTOSHOP_IDS;
     # if $what is undefined we are happy
     return 'ok' unless defined $what;
     # return "ok" if $what is defined and the appropriate subdir is there
-    return 'ok' if defined $this->search_record(&$subdir_name($what));
+    return 'ok' if defined $this->search_record(subdir_name($what));
     # fallback
     return undef;
 }
@@ -220,11 +202,11 @@ sub is_app13_ok {
 sub retrieve_app13_subdir {
     my ($this, $what) = @_;
     # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
+    $this->sanitise_what($what);
     # return immediately if the segment is not suitable
     return undef unless $this->is_app13_ok($what);
     # return the IPTC subdirectory reference
-    return $this->search_record_value(&$subdir_name($what));
+    return $this->search_record_value(subdir_name($what));
 }
 
 ###########################################################
@@ -238,7 +220,7 @@ sub retrieve_app13_subdir {
 sub provide_app13_subdir {
     my ($this, $what) = @_;
     # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
+    $this->sanitise_what($what);
     # don't try to mess up non-APP13 segments!
     return undef unless $this->is_app13_ok(undef);
     # be positive, call retrieve first
@@ -246,7 +228,7 @@ sub provide_app13_subdir {
     # return this value, if it is not undef
     return $subdir if defined $subdir;
     # create the appropriate subdir in the main record dir of this segment
-    $subdir = $this->provide_subdirectory(&$subdir_name($what));
+    $subdir = $this->provide_subdirectory(subdir_name($what));
     # if $what is 'IPTC', initialise the subdir with 'RecordVersion'.
     # I don't know why the standard says 4 here, but you always find 2.
     $this->store_record($subdir,0, $UNDEF, \ "\000\002", 2) if $what eq 'IPTC';
@@ -266,12 +248,12 @@ sub provide_app13_subdir {
 sub remove_app13_info {
     my ($this, $what) = @_;
     # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
+    $this->sanitise_what($what);
     # return if there is nothing to erase
     return unless $this->is_app13_ok($what);
     # these approach is simple and crude
     @{$this->{records}} =
-	grep { $_->{key} ne &$subdir_name($what) } @{$this->{records}};
+	grep { $_->{key} ne subdir_name($what) } @{$this->{records}};
     # update the data area of the segment
     $this->update();
 }
@@ -307,9 +289,9 @@ sub remove_app13_info {
 sub get_app13_data {
     my ($this, $type, $what) = @_;
     # die on unknown $type's (default --> 'TEXTUAL' if undefined)
-    &$sanitise_type($type);
+    $this->sanitise_type($type);
     # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
+    $this->sanitise_what($what);
     # retrieve the appropriate records list
     my $records = $this->retrieve_app13_subdir($what);
     # return undef if the directory is not present
@@ -329,7 +311,7 @@ sub get_app13_data {
     # if the type is textual, the tags must be translated;
     # if there is no positive match from JPEG_lookup, create a tag
     # carrying 'Unknown_tag_' followed by the key numerical value.
-    %$data = map { my $match = JPEG_lookup('APP13',&$subdir_name($what),$_);
+    %$data = map { my $match = JPEG_lookup('APP13', subdir_name($what),$_);
 		   (defined $match ? $match : "Unknown_tag_$_")
 		       => $$data{$_} } keys %$data if $type eq 'TEXTUAL';
     # return the magic scalar
@@ -379,9 +361,9 @@ sub get_app13_data {
 sub set_app13_data {
     my ($this, $data, $action, $what) = @_;
     # die on unknown $action's (default --> 'REPLACE' if undefined)
-    &$sanitise_action($action);
+    $this->sanitise_action($action);
     # die on unknown $what's (default --> 'IPTC' if undefined)
-    &$sanitise_what($what);
+    $this->sanitise_what($what);
     # return immediately if $data is not a hash reference
     return unless ref $data eq 'HASH';
     # collapse UPDATE into ADD if $what is PHOTOSHOP
@@ -402,7 +384,7 @@ sub set_app13_data {
 	# if $tag is not numeric, try a textual to numeric
 	# translation; (but don't set it to an undefined value yet)
 	if (defined $tag && $tag !~ /^\d*$/) {
-	    my $value = JPEG_lookup('APP13', &$subdir_name($what), $tag);
+	    my $value = JPEG_lookup('APP13', subdir_name($what), $tag);
 	    $tag = $value if defined $value; }
 	# get a reference to the correct repository: an entry is
 	# accepted if it passes the value_is_OK test, rejected otherwise.
@@ -510,7 +492,7 @@ sub value_is_OK {
     # the referenced array must contain at least one element
     return undef unless @$arrayref;
     # if the tag is not known, it is not acceptable
-    return undef unless JPEG_lookup('APP13', &$subdir_name($what), $tag);
+    return undef unless JPEG_lookup('APP13', subdir_name($what), $tag);
     # it $what is 'PHOTOSHOP', the number of values can be 1 or 2
     return undef if $what eq 'PHOTOSHOP' && scalar @$arrayref > 2;
     # .... moreover, the first value cannot be undefined

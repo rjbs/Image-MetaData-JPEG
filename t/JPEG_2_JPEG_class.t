@@ -1,31 +1,33 @@
 use Test::More;
 use strict;
 use warnings;
-use Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Segment;
 
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
 my $cphoto = 't/test_photo_copy.jpg';
 my $ref    = '\[REFERENCE\].*-->.*$';
-my $trim = sub { $_[0] =~ s/at.*//; chomp $_[0]; $_[0] };
+my $trim = sub { join '\n', map { s/^.*\"(.*)\".*$/$1/; $_ }
+		 grep { /0:/ } split '\n', $_[0] };
+my $fake = sub { my $s = $::segname->new('COM',\ "Fake $_[0] segment");
+		 $s->{name} = $_[0]; return $s; };
 my ($lines, $image, $image_2, $error, $handle, $buffer, $bufferref,
     @desc, @desc_2, $seg, $h1, $h2, $status, $num, $num2, @segs1, @segs2);
 
 #=======================================
 diag "Testing [Image::MetaData::JPEG]";
-plan tests => 47;
+plan tests => 60;
 #=======================================
 
 #########################
-BEGIN { $::cname  = 'Image::MetaData::JPEG'; use_ok $::cname; }
+BEGIN { $::cname   = 'Image::MetaData::JPEG';  use_ok $::cname;   }
+BEGIN { $::segname = $::cname . '::Segment';   use_ok $::segname; }
 
 #########################
 ok( -s $tphoto, "Test photo exists" );
 
 #########################
 $image = $::cname->new("'Invalid'");
-ok( ! $image, &$trim($::cname->Error()) );
+ok( ! $image, 'Fail OK: ' . &$trim($::cname->Error()) );
 
 #########################
 $image = $::cname->new(undef);
@@ -50,20 +52,18 @@ $image_2 = $::cname->new($bufferref);
 ok( $image_2, "Constructor with reference" );
 
 #########################
-$_->{parent} = $image for @{$image_2->{segments}}; # hack for parental link
-is_deeply( $image->{segments}, $image_2->{segments},
-	   "The two objects coincide" );
+is_deeply( $image->{segments}, $image_2->{segments}, "Objects coincide" );
 
 #########################
 $error = $::cname->Error();
 is( $error, undef, "Ctor error unset (default)" );
 
 #########################
-$image = new $::cname($tphoto, "COM|SOF");
+$image = $::cname->new($tphoto, "COM|SOF");
 ok( $image, "Restricted constructor" );
 
 #########################
-$image = new $::cname($tphoto, "COM|SOF", "FASTREADONLY");
+$image = $::cname->new($tphoto, "COM|SOF", "FASTREADONLY");
 ok( $image, "Fast constructor" );
 
 #########################
@@ -113,7 +113,7 @@ is_deeply( [$image->get_segments("^S", "INDEXES")], [0, 7, 10],
 is_deeply( [$image->get_dimensions()], [432, 288], "Image dimensions" );
 
 #########################
-is( $image->find_new_app_segment_position(), 7, "New APPx position" );
+is( $image->find_new_app_segment_position('APP1'), 4, "New APPx position" );
 
 #########################
 ok( $image->save($cphoto), "Exit status of save()" );
@@ -127,7 +127,6 @@ $image_2 = $::cname->new($bufferref);
 isa_ok( $image_2, $::cname );
 
 #########################
-$_->{parent} = $image for @{$image_2->{segments}}; # parental link hack
 is_deeply( $image->{segments}, $image_2->{segments},
 	   "From-disk and in-memory compare equal" );
 
@@ -147,7 +146,7 @@ ok( ! $image->save($bufferref), "Do not save incomplete files" );
 is( $image->get_segments(), 1, "Number of APP1 segments");
 
 #########################
-is( $image->find_new_app_segment_position(), 0,
+is( $image->find_new_app_segment_position('APP1'), 0,
     "find_new_app_segment_position not fooled by only 1 segment" );
 
 #########################
@@ -193,7 +192,7 @@ is( $@, '', "insert_segments without a segment does not fail" );
 is_deeply( \ @segs1, \ @segs2, "... but segments are not changed" );
 
 #########################
-$seg = new Image::MetaData::JPEG::Segment($image, 'COM', \ 'dummy');
+$seg = $::segname->new('COM', \ 'dummy');
 eval { $image->insert_segments($seg, 0) };
 isnt( $@, '', "... pos=0 fails miserably" );
 
@@ -212,7 +211,7 @@ splice @segs2, 3, 0, $seg;
 is_deeply( \ @segs1, \ @segs2, "inserting a segment with pos=3" );
 
 #########################
-splice @segs2, $image->find_new_app_segment_position(), 0, $seg;
+splice @segs2, $image->find_new_app_segment_position('COM'), 0, $seg;
 $image->insert_segments($seg);
 @segs1 = $image->get_segments();
 is_deeply( \ @segs1, \ @segs2, "... now with automatic positioning" );
@@ -228,6 +227,69 @@ $image->insert_segments([$seg, $seg], 1, 3);
 @segs1 = $image->get_segments();
 splice @segs2, 1, 3, $seg, $seg;
 is_deeply( \ @segs1, \ @segs2, "overwriting instead of inserting" );
+
+#########################
+@{$image->{segments}} = $image->get_segments('^(SOI|EOI)$');
+is_deeply( [map { $_->{name} } $image->get_segments()], 
+	   ['SOI', 'EOI'], "only SOI and EOI left" );
+
+#########################
+$image->insert_segments(&$fake('COM')); # SOI, COM, EOI
+is_deeply( $image->{segments}[1], &$fake('COM'), "insert with only SOI/EOI" );
+
+#########################
+$image->{segments}[1] = &$fake('SOF_0'); # SOI, SOF_0, EOI
+is_deeply( $image->{segments}[1], &$fake('SOF_0'), "insertion of a fake SOF" );
+
+#########################
+$image->insert_segments(&$fake('COM')); # SOI, COM, SOF_0, EOI
+is_deeply( $image->{segments}[1], &$fake('COM'), "insert in [SOI, SOF]" );
+
+#########################
+$image->{segments}[1] = &$fake('APP2'); # SOI, APP2, SOF_0, EOI
+$image->insert_segments(&$fake('COM')); # SOI, APP2, COM, SOF_0, EOI
+is_deeply( $image->{segments}[2], &$fake('COM'), "insert COM after APPx" );
+
+#########################
+$image->insert_segments(&$fake('APP0')); # SOI, APP0, APP2, COM, SOF_0, EOI
+is_deeply( $image->{segments}[1], &$fake('APP0'), "insert APP0 before APP2" );
+
+#########################
+$image->insert_segments(&$fake('APP9')); # SOI,APP0,APP2,APP9,COM,SOF_0,EOI
+is_deeply( $image->{segments}[3], &$fake('APP9'), "insert APP9 after APP2" );
+
+#########################
+$image->insert_segments(&$fake('APP0')); # SOI,APP0,APP0,APP2,APP9,COM,SOF0,EOI
+is_deeply( $image->{segments}[2], &$fake('APP0'), "insert APP0 after APP0" );
+
+#########################
+$image->{segments}[1] = &$fake('APP1'); # SOI,APP1,APP0,APP2,APP9,COM,SOF0,EOI
+$image->insert_segments(&$fake('APP1')); #SOI,2APP1,APP0,APP2,APP9,COM,SOF0,EOI
+is_deeply( $image->{segments}[2], &$fake('APP1'),
+	   "insert APP1 after APP1 with before APP0" );
+
+#########################
+$image->drop_segments('COM');
+$image->{segments}[2] = &$fake('COM'); # SOI,APP1,COM,APP0,APP2,APP9...
+$image->insert_segments(&$fake('COM')); # SOI,APP1,COM,COM,APP0,APP2,APP9...
+is_deeply( $image->{segments}[3], &$fake('COM'),
+	   "insert COM after COM among APPx" );
+
+#########################
+$image->drop_segments('COM');
+$image->insert_segments(&$fake('COM')); # SOI,APP1,APP0,APP2,APP9,COM...
+is_deeply( $image->{segments}[5], &$fake('COM'),
+	   "insert COM after all APPx" );
+
+#########################
+$image->insert_segments(&$fake('APP7')); # SOI,APP1,APP0,APP2,APP7,APP9,COM...
+is_deeply( $image->{segments}[4], &$fake('APP7'), "insert APP7 among APPx" );
+
+#########################
+$image->{segments}[1] = &$fake('COM'); # SOI,COM,APP0,APP2,APP7,APP9,COM...
+$image->provide_app1_Exif_segment();
+$num = ($image->get_segments('^APP1$', 'INDEXES'))[0];
+is( $num, 3, "provide_app1_Exif_segment finds its way ..." );
 
 ### Local Variables: ***
 ### mode:perl ***

@@ -1,14 +1,39 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Record;
+use Image::MetaData::JPEG::Backtrace;
 use Image::MetaData::JPEG::Tables qw(:Endianness  :RecordTypes
 				     :RecordProps :Lookups);
 no  integer;
 use strict;
 use warnings;
+
+###########################################################
+# These simple methods should be used instead of standard #
+# "warn" and "die" in this package; they print a much     #
+# more elaborated error message (including a stack trace).#
+# Warnings can be turned off altogether simply by setting # 
+# Image::MetaData::JPEG::show_warnings to false.          #
+###########################################################
+sub warn { my ($this, $message) = @_;
+	   warn Image::MetaData::JPEG::Backtrace::backtrace
+	       ($message, "Warning" . $this->info(), $this)
+	       if $Image::MetaData::JPEG::show_warnings; }
+sub die  { my ($this, $message) = @_;
+	   die Image::MetaData::JPEG::Backtrace::backtrace
+	       ($message,"Fatal error" . $this->info(), $this);}
+sub info { my ($this) = @_;
+	   my $key  = (ref $this && $this->{key})  || '<no key>';
+	   my $type = (ref $this && $this->{type}) || '<no type>';
+	   return " [key $key] [type $type]"; }
+
+###########################################################
+# A regular expression matching a legal endianness value. #
+###########################################################
+my $ENDIANNESS_OK = qr/$BIG_ENDIAN|$LITTLE_ENDIAN/o;
 
 ###########################################################
 # Constructor for a generic key - values pair for storing #
@@ -53,8 +78,8 @@ use warnings;
 ###########################################################
 sub new {
     my ($pkg, $akey, $atype, $dataref, $count, $endian) = @_;
-    # return immediately with undef if $dataref is not a reference
-    return undef unless ref $dataref;
+    # die immediately if $dataref is not a reference
+    $pkg->die('Reference not found') unless ref $dataref;
     # create a Record object with some fields filled
     my $this  = bless {
 	key     => $akey,
@@ -75,7 +100,7 @@ sub new {
     # is set to $current and the length test will never fail).
     $expected = $count ? $count : $current if $expected == 0;
     # Throw an error if the supplied memory area is incorrectly sized
-    die "Incorrect size for $pkg (expected $expected, found $current)"
+    $this->die("Incorrect size (expected $expected, found $current)")
 	if ($current != $expected);
     # get a reference to the internal value list
     my $tokens = $this->{values};
@@ -90,9 +115,9 @@ sub new {
 	$cat eq 'I' ? $this->decode_integers($tlength  , $dataref, $endian) :
 	$cat eq 'R' ? $this->decode_integers($tlength/2, $dataref, $endian) :
 	$cat eq 'F' ? $this->decode_floating($tlength  , $dataref, $endian) :
-	die "Unknown category in Record constructor";
+	$this->die('Unknown category');
     # die if the token list is empty
-    die "Empty token list!" if @$tokens == 0;
+    $this->die('Empty token list') if @$tokens == 0;
     # return the blessed reference
     return $this;
 }
@@ -134,11 +159,12 @@ sub is_signed { return $JPEG_RECORD_TYPE_SIGN[$_[0]{type}] eq 'Y'; }
 # should not be tested (this comes from TYPE_LENGHT = 0). #
 ###########################################################
 sub get_size {
-    my ($self, $type, $count) = @_;
+    my ($this, $type, $count) = @_;
     # if count is unspecified, set it to 1
     $count = 1 unless defined $count;
-    # die if the type is unknown
-    die "Unknown record type ($type)"
+    # die if the type is unknown or undefined
+    $this->die('Undefined record type') unless defined $type;
+    $this->die("Unknown record type ($type)")
 	if $type < 0 || $type > $#JPEG_RECORD_TYPE_LENGTH;
     # return the type length times $count
     return $JPEG_RECORD_TYPE_LENGTH[$type] * $count;
@@ -215,7 +241,7 @@ sub get_value {
     # get the last legal index
     my $last_index = $#$values;
     # check that $index is legal, throw an exception otherwise
-    die "Out-of-bound record index ($index > $last_index)" 
+    $this->die("Out-of-bound index ($index > $last_index)") 
 	if $index > $last_index;
     # return the desired value
     return $$values[$index];
@@ -235,7 +261,7 @@ sub set_value {
     $index = 0 unless defined $index;
     # check out-of-bound condition
     my $last_index = $#$values;
-    die "Out-of-bound record index ($index > $last_index)" 
+    $this->die("Out-of-bound index ($index > $last_index)")
 	if $index > $last_index;
     # set the value
     $$values[$index] = $new_value;
@@ -275,7 +301,7 @@ sub set_value {
 sub decode_integers {
     my ($this, $n, $dataref, $endian) = @_;
     # safety check on endianness
-    die "Unknown endianness" unless $endian =~ /$BIG_ENDIAN|$LITTLE_ENDIAN/o;
+    $this->die('Unknown endianness') unless $endian =~ $ENDIANNESS_OK;
     # prepare the list of raw tokens
     my @tokens = unpack "a$n" x (length($$dataref)/$n), $$dataref;
     # correct the tokens for endianness if necessary
@@ -300,7 +326,7 @@ sub decode_integers {
 sub encode_integers {
     my ($this, $n, $endian) = @_;
     # safety check on endianness
-    die "Unknown endianness" if ! $endian =~ /$BIG_ENDIAN|$LITTLE_ENDIAN/o;
+    $this->die('Unknown endianness') unless $endian =~ $ENDIANNESS_OK;
     # copy the value list (the original should not be touched)
     my @tokens = @{$this->{values}};
     # correction for signedness
@@ -330,7 +356,7 @@ sub encode_integers {
 sub decode_floating {
     my ($this, $n, $dataref, $endian) = @_;
     # safety check on endianness
-    die "Unknown endianness" unless $endian =~ /$BIG_ENDIAN|$LITTLE_ENDIAN/o;
+    $this->die('Unknown endianness') unless $endian =~ $ENDIANNESS_OK;
     # prepare the list of raw tokens
     my @tokens = unpack "a$n" x (length($$dataref)/$n), $$dataref;
     # correct the tokens for endianness if necessary (to native endianness)
@@ -353,7 +379,7 @@ sub decode_floating {
 sub encode_floating {
     my ($this, $n, $endian) = @_;
     # safety check on endianness
-    die "Unknown endianness" unless $endian =~ /$BIG_ENDIAN|$LITTLE_ENDIAN/o;
+    $this->die('Unknown endianness') unless $endian =~ $ENDIANNESS_OK;
     # get a simpler reference to the value list
     my @tokens = @{$this->{values}};
     # select the correct conversion format (single/double/extended)
@@ -396,7 +422,7 @@ sub get {
 	$category eq 'I' ? $this->encode_integers($tlength  , $endian) :
 	$category eq 'R' ? $this->encode_integers($tlength/2, $endian) :
 	$category eq 'F' ? $this->encode_floating($tlength  , $endian) :
-	die "Unknown category in Record get() method";
+	$this->die('Unknown category');
     # calculate the "count" (the number of elements for numeric types
     # and the length of $$dataref for references, strings, undefined)
     my $count = length($$dataref) / ( $category =~ /S|p/ ? 1 : $tlength );
@@ -510,12 +536,12 @@ sub get_description {
 	my $category = $this->get_category();
 	# show something, depending on category and type
 	$description .= 
-	    $category eq 'p' ? sprintf ' --> %p'  , $_         :
-	    $category eq 'S' ? sprintf '%s'       , &$text($_) :
-	    $category eq 'I' ? sprintf ' '.$intfs , $_         :
-	    $category eq 'F' ? sprintf ' %g'      , $_         :
-	    $category eq 'R' ? sprintf '%s'.$intfs, $f, $_     :
-	    die "Unknown error condition"; }
+	    $category eq 'p' ? sprintf ' --> 0x%06x', $_         :
+	    $category eq 'S' ? sprintf '%s'         , &$text($_) :
+	    $category eq 'I' ? sprintf ' '.$intfs   , $_         :
+	    $category eq 'F' ? sprintf ' %g'        , $_         :
+	    $category eq 'R' ? sprintf '%s'.$intfs  , $f, $_     :
+	    $this->die('Unknown error condition'); }
     # terminate the line; remember to put a warning note if there were
     # more than $max_tokens element to display, then return the description
     $description .= " ... ($extra more values)" if $extra > 0;

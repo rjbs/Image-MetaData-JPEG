@@ -7,7 +7,7 @@ use Image::MetaData::JPEG::Tables qw(:Lookups);
 my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
-my ($image, $image2, $seg, $hash, $hash2, $d1, $d2, $ref);
+my ($image, $image2, $seg, $hash, $hash2, $d1, $d2, $dt, $ref);
 my $uc = sub { my $s = "\376\377";
                $s .= "\000$_" for split(/ */,$_[0]);
                $s .= "\000\000"; };
@@ -47,7 +47,6 @@ my $IMAGE_data = {
     &$val('LightSource')              =>  17,
     &$val('Flash')                    => [79],
     &$val('SubjectArea')              => [10, 20, 30],
-    &$val('MakerNote')                =>  '13@'."\023\133_ ..\377\000ab-_",
     &$val('UserComment')              => ["Unicode\000asdfgh"],
     'ExifVersion'                     => '0220',
     'DateTimeOriginal'                => ['1996:07:12 14:36:55'],
@@ -112,7 +111,7 @@ my $must_go_into_SubIFD = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (IMAGE_DATA & ROOT_DATA)";
-plan tests => 47;
+plan tests => 51;
 #=======================================
 
 #########################
@@ -180,7 +179,6 @@ is_deeply( $hash, {}, "adding without the Exif segment" );
 $ref = \ "dummy";
 $image->save($ref);
 $image2 = $cname->new($ref, '^APP1$');
-$_->{parent} = $image for @{$image2->{segments}}; # parental link hack
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################
@@ -203,6 +201,10 @@ $hash = $image->get_Exif_data('GPS_DATA', 'NUMERIC');
 is_deeply( $hash, {}, "... no records found in GPS" );
 
 #########################
+$hash = $image->set_Exif_data({'MakerNote' => "\023b-_"}, 'IMAGE_DATA', 'ADD');
+ok( exists $$hash{&$val('MakerNote')}, "The MakerNote cannot be changed" );
+
+#########################
 $hash = $image->set_Exif_data({'Orientation' => 11}, 'IMAGE_DATA', 'ADD');
 ok( exists $$hash{&$val('Orientation')}, "Invalid Orientation rejected" );
 
@@ -217,6 +219,18 @@ ok( exists $$hash{9999}, "unknown numeric tags are rejected" );
 #########################
 $hash = $image->set_Exif_data({'Pippero' => 2}, 'IMAGE_DATA', 'ADD');
 ok( exists $$hash{'Pippero'}, "unknown textual tags are rejected" );
+
+#########################
+$dt = '1999:05:05 12:00:00';
+$hash = $image->set_Exif_data({'DateTime' => $dt}, 'IMAGE_DATA', 'ADD');
+ok( ! exists $$hash{&$val('DateTime')}, "Standard date/time accepted" );
+
+#########################
+$hash = $image->get_Exif_data('IMAGE_DATA', 'TEXTUAL');
+ok( exists $$hash{'DateTime'}, "... gotten back via get_Exif_data" );
+
+#########################
+is_deeply( $$hash{'DateTime'}, [$dt."\000"], "... and its value is correct" );
 
 #########################
 $hash = $image->set_Exif_data({'Identifier'    => "Exif\000\000",

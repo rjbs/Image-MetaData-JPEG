@@ -2,9 +2,10 @@ use Test::More;
 use strict;
 use warnings;
 
-my ($record, $data, $result, $mykey, $key, $type, $count, $dataref, @v, @w);
-my $trim = sub { (my $file = $::cname) =~ s/::/\//g;
-		 $_[0] =~ s/ at .*$file.*//; chomp $_[0]; $_[0] };
+my ($record, $data, $result, $mykey, $key, $type,
+    $count, $dataref, @v, @w, $problem);
+my $trim = sub { join '\n', map { s/^.*\"(.*)\".*$/$1/; $_ }
+		 grep { /0:/ } split '\n', $_[0] };
 my @messages = ( "1st value", "2nd value" , "3rd value", "4th value" );
 my @notnums  = (qr/NAN/i, qr/^[^-]*INF/i, qr/-.*INF/i); # case insensitive!
 my @notnames = ('NaN', '+Inf', '-Inf');
@@ -17,10 +18,13 @@ sub pack_float { pack_ieee('f', @_) };
 sub test_float { test_ieee( 23, @_) };
 sub pack_double{ pack_ieee('d', @_) };
 sub test_double{ test_ieee( 52, @_) };
+# this is for trapping an error:
+sub trap_error { local $SIG{'__DIE__'} = sub { $problem = shift; };
+		 $problem = undef; eval $_[0]; }
 
 #=======================================
 diag "Testing [Image::MetaData::JPEG::Record]";
-plan tests => 131;
+plan tests => 150;
 #=======================================
 
 BEGIN { $::pkgname = 'Image::MetaData::JPEG';
@@ -46,9 +50,6 @@ isa_ok( $record, $::cname );
 ok($::cname->new(0x3456, $ASCII, \$data, length $data), "with numeric tag" );
 
 #########################
-is($::cname->new(0x3456, $ASCII), undef, "survives to undef data" );
-
-#########################
 $record = $::cname->new($mykey, $ASCII, \$data, length $data);
 $result = $record->get_value();
 is( $data, $result, "rereading ASCII data" );
@@ -59,8 +60,8 @@ is( $data, $result, "... test of get" );
 
 #########################
 ($key, $type, $count, $dataref) = $record->get();
-is_deeply( [$mykey,$type,$dataref],
-	   [$key,$ASCII,\$data], "... test of get (list)" );
+is_deeply( [$mykey, $type, $dataref], [$key, $ASCII, \$data],
+	   "... test of get (list)" );
 
 #########################
 $record = $::cname->new($mykey, $UNDEF, \$data, length $data);
@@ -430,6 +431,98 @@ is( $data, scalar $record->get(), "Variable-length size specified" );
 #########################
 $record = $::cname->new($mykey, $UNDEF, \$data);
 is( $data, scalar $record->get(), "Variable-length size unspecified" );
+
+#########################
+{ local $SIG{'__WARN__'} = sub { $problem = shift; };
+  $problem = undef; $record->warn('Fake warning'); }
+ok( $problem, "Generation of warning reports works: " . &$trim($problem));
+
+#########################
+{ local $SIG{'__WARN__'} = sub { $problem = shift; };
+  eval '$'."$::pkgname".'::show_warnings = undef';
+  $problem = undef; $record->warn('Fake warning');
+  eval '$'."$::pkgname".'::show_warnings = 1'; }
+ok( ! $problem, "Generation of warnings can be inhibited" );
+
+#########################
+{ local $SIG{'__DIE__'} = sub { $problem = shift; };
+  $problem = undef; eval{$record->get_value(999)}; }
+ok( $problem, "Generation of error reports works: " . &$trim($problem));
+
+#########################
+{ local $SIG{'__DIE__'} = sub { $problem = shift; };
+  eval '$'."$::pkgname".'::show_warnings = undef';
+  $problem = undef; eval{$record->get_value(999)};
+  eval '$'."$::pkgname".'::show_warnings = 1'; }
+ok( $problem, "Generation of errors cannot be inhibited: " . &$trim($problem));
+
+#########################
+{ local $SIG{'__DIE__'} = sub { $problem = shift; };
+  $problem = undef; eval{$::cname->get_size(65535, 4294967295)}; }
+ok( $problem, "Error report from \"static\" method: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new($mykey, $LONG, \ "xxxxx", 1)');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new($mykey, $UNDEF, \ "xxxxx", 7)');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new($mykey, 99, \ "xxxxx", 5)');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new($mykey, $LONG, \ "", 0)');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->get_size()');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->get_size(99)');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+$data = pack "S", 999;
+trap_error('$::cname->new($mykey, $SHORT, \ $data, 2)->get_value(2)');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new($mykey, $SHORT, \ $data, 2)->set_value(13, 2)');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+$data = pack "N", 999999;
+trap_error('$::cname->new($mykey, $LONG, \ $data, 1, "KK")');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new($mykey, $LONG, \ $data, 1)->get("KK")');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+$data = pack "ff", 256.799, 134.24;
+trap_error('$::cname->new($mykey, $FLOAT, \ $data, 2, "KK")');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new($mykey, $FLOAT, \ $data, 2)->get("KK")');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new($mykey, $FLOAT, \ "x"x8, 2, "KK")');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new($mykey, $ASCII, 25, 25)');
+ok( $problem, "Error OK: " . &$trim($problem));
+
+#########################
+trap_error('$::cname->new(0x3456, $ASCII)');
+ok( $problem, "does not survive to undef data" );
 
 ### Local Variables: ***
 ### mode:perl ***

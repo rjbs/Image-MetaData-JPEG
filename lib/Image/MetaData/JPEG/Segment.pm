@@ -1,43 +1,50 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
-use Image::MetaData::JPEG::Tables qw(:JPEGgrammar);
+use Image::MetaData::JPEG::Tables qw(:JPEGgrammar :Endianness :RecordTypes);
+use Image::MetaData::JPEG::Backtrace;
 use Image::MetaData::JPEG::Record;
 no  integer;
 use strict;
 use warnings;
 
 ###########################################################
-# Load other parts for this package. In order to avoid    #
-# that this file becomes too large, only general interest #
-# methods are written here.                               #
+# These simple methods should be used instead of standard #
+# "warn" and "die" in this package; they print a much     #
+# more elaborated error message (including a stack trace).#
+# Warnings can be turned off altogether simply by setting # 
+# Image::MetaData::JPEG::show_warnings to false.          #
 ###########################################################
-BEGIN {
-    require "Image/MetaData/JPEG/Segment_parsers.pl"; # parser methods
-    require "Image/MetaData/JPEG/Segment_dumpers.pl"; # dumper methods
-}
+sub warn { my ($this, $message) = @_;
+	   warn Image::MetaData::JPEG::Backtrace::backtrace
+	       ($message, "Warning" . $this->info(), $this)
+	       if $Image::MetaData::JPEG::show_warnings; }
+sub die  { my ($this, $message) = @_;
+	   die Image::MetaData::JPEG::Backtrace::backtrace
+	       ($message, "Fatal error" . $this->info(), $this);}
+sub info { my ($this) = @_; my $name = $this->{name} || '<no name>';
+	   return " [segment type $name]"; }
 
 ###########################################################
-# JPEG segment header constructor. Its arguments are: a   #
-# reference to a parent entity (a JPEG structure object   #
-# usually, but it can also be undef), the segment type    #
-# (a multicharacter string, not the marker), a reference  #
-# to a raw data buffer and a parse flag. The raw buffer   #
-# is saved internally through its reference (no copy is   #
-# done). If the parse flag does not match "NOPARSE",      #
-# those segments which can be parsed have their key-value #
-# pairs extracted to JPEG::Record's in the 'records' list.#
+# JPEG segment header constructor. Its arguments are: the #
+# segment type (a multicharacter string, not the marker), #
+# a reference to a raw data buffer and a parse flag. The  #
+# raw buffer is saved internally through its reference    #
+# (no copy is done). If its parse flag does not match     #
+# "NOPARSE", and its type is parseable, the Segment has   #
+# its key-value pairs extracted to JPEG::Record's in the  #
+# 'records' list.                                         #
 #=========================================================#
-# All segments start with four bytes with a common format:#
+# The first four bytes in the Segment mean:               #
 #                                                         #
 #  2 bytes  segment marker (0xff..)                       #
 #  2 bytes  length (including this value)                 #
 #                                                         #
-# The marker is a two byte value, whose first byte is al- #
-# ways 0xff. The value of the second byte defines the     #
+# The marker is a two byte value, whose first byte is     #
+# always 0xff. The value of the second byte defines the   #
 # segment type. It is assumed that the buffer which is    #
 # passed to this constructor DOES NOT contain these four  #
 # bytes; in fact, the segment type can be deduced by its  #
@@ -46,37 +53,35 @@ BEGIN {
 # fies a lot of repetitive code, but it must be kept in   #
 # mind when the file is written back to the filesystem.   #
 #=========================================================#
-# The private variable $this->{endianness} contains the   #
+# $this->{endianness} (a private field) contains the      #
 # current endianness, i.e. the endianness to be used for  #
 # reading the next values while parsing the data area.    #
 # Its significant is therefore only transient, and it is  #
 # set to undef at the end of the constructor.             #
 #=========================================================#
-# The variable $this->{error} is normally "undef". If,    #
-# however, an error occurred during the parsing stage in  #
-# the constructor, this variable is set to an error mes-  #
-# sage. The rationale is that a segment with errors can   #
-# be inspected (partially, of course, because parsing did #
-# not terminate correctly) but not modified (that is, the #
-# update method, which overwrites the area pointed to by  #
-# $this->{dataref}, must be inhibited): it can only be    #
+# $this->{error} is normally set to "undef". If, however, #
+# an error occurred during the parsing stage in the cons- #
+# tructor, this variable is set to an error message. The  #
+# intended use is the following: a Segment with errors    #
+# can be inspected (partially, of course, because parsing #
+# did not terminate correctly) but not modified (that is, #
+# the update method, which overwrites the area pointed to #
+# by $this->{dataref}, must be inhibited): it can only be #
 # rewritten to disk as it is.                             #
 ###########################################################
 sub new {
-    my ($pkg, $parent, $name, $dataref, $flag) = @_;
-    # die on various error conditions
-    die "Invalid parental link"  unless ! defined $parent  ||   ref $parent;
-    die "Invalid segment name"   unless   defined $name    && ! ref $name;
-    die "Invalid data reference" unless ! defined $dataref ||   ref $dataref;
+    my ($pkg, $name, $dataref, $flag) = @_;
     # if $dataref is undef, point it to a *modifiable* empty string
     my $this = bless {
-	parent     => $parent,
 	name       => $name,
 	dataref    => defined $dataref ? $dataref : \ (my $ns = ''),
 	records    => [],
 	error      => undef,
 	endianness => undef,
     }, $pkg;
+    # die on various error conditions
+    $this->die('Invalid segment name')  unless defined $name && ! ref $name;
+    $this->die('Invalid data reference') if defined $dataref && ! ref $dataref;
     # parse the segment (pass the $flag)
     $this->parse($flag);
     # return a reference to the constructed object
@@ -102,11 +107,11 @@ sub new {
 ###########################################################
 sub parse {
     my ($this, $flag) = @_;
-    # reset the error flag and set endianness to big endian
-    $this->{error}      = undef; 
-    $this->{endianness} = $BIG_ENDIAN;
-    # clear the data parsed so far
-    $this->{records}    = [];
+    # locally set endianness to big endian
+    local $this->{endianness} = $BIG_ENDIAN;
+    # reset the error flag and clear the data set
+    $this->{error}   = undef; 
+    $this->{records} = [];
     # call the specific parse routines inside an eval block,
     # so that errors are not fatal...
     eval {
@@ -141,8 +146,6 @@ sub parse {
     # parsing was ok if no error was catched by the eval.
     # Update the "error" member here to reflect this fact.
     $this->{error} = $@ if $@;
-    # reset the default endianness to undef
-    $this->{endianness} = undef;
 }
 
 ###########################################################
@@ -170,21 +173,21 @@ sub reparse_as {
 # file to the disk, if any record was changed/added/elimi-#
 # nated. The routine dispatches to more specific methods. #
 # ------------------------------------------------------- #
-# Segments with errors cannot be updated (this is a secu- #
-# rity measure, do not update what you do not understand) #
+# A segment with errors cannot be updated (a security     #
+# measure: do not update what you do not understand)      #
 ###########################################################
 sub update {
     my ($this) = @_;
     # if the segment was not correctly parsed, warn and return
-    die 'Update error: faulty segment' if $this->{error};
+    $this->die('This segment is faulty') if $this->{error};
     # this might come also from 'NOPARSE'
-    die 'Update error: no records' if scalar @{$this->{records}} == 0;
+    $this->die('This segment has no records') unless @{$this->{records}};
     # call a more specific routine
     return $this->dump_com()   if $this->{name} eq 'COM';
     return $this->dump_app1()  if $this->{name} eq 'APP1';
     return $this->dump_app13() if $this->{name} eq 'APP13';
-    # the other segments are still unhandled (SOI, EOI and RST* are trivial)
-    die "Updating $this->{name} not yet implemented";
+    # the other types are still unhandled (SOI, EOI and RST* are trivial)
+    $this->die("'$this->{name}' update routine not yet implemented");
 }
 
 ###########################################################
@@ -192,7 +195,7 @@ sub update {
 # a file handle. The segment "preamble" is prepended, ex- #
 # ception made for raw data (scans). The preamble always  #
 # includes the 0xff byte followed by the segment marker.  #
-# Segments which can accept real data also require a      #
+# A Segment which can accept real data also requires a    #
 # two-byte data count. The return value is the error      #
 # status of the print calls.                              #
 # ------------------------------------------------------- #
@@ -215,13 +218,13 @@ sub output_segment_data {
     # 2^16 - 3. Check and throw an exception in case it is larger.
     # Do not run the check for raw data or past-the-end data.
     my $max_length = 2**16 - 3;
-    die sprintf("Segment %s too large (len=%d, max=%d), skipping ...",
-		$this->{name}, $length, $max_length)
+    $this->die(sprintf('Segment %s too large (len=%d, max=%d)',
+		       $this->{name}, $length, $max_length))
 	if $length > $max_length && $name !~ /ECS|Post-EOI/;
-    # prepare the segment header (skip for raw data segments)
+    # prepare the segment header (not needed for a raw data segment)
     my $preamble = ( $name =~ /ECS|Post-EOI/ ? "" :
 		     pack("CC", $JPEG_PUNCTUATION, $JPEG_MARKER{$name}) );
-    # prepare the length word (skip for segments not needing it)
+    # prepare the length word (not all segment types need it)
     $preamble .= pack("n", 2 + $length)
 	unless $name =~ /SOI|EOI|RST|ECS|Post-EOI/;
     # output the preamble and the data buffer (return the status)
@@ -241,7 +244,7 @@ sub get_description {
     my $description = sprintf("%7dB ", $this->size()) .
 	($amarker ? sprintf "<0x%02x %5s>", $amarker, $this->{name} :
 	 sprintf "<%10s>", $this->{name} ) .
-	 ($error ? " {Error: $error}" : "") . "\n";
+	 ($error ? " {Faulty segment:\n $error}" : "") . "\n";
     # a list for successive keys for numeric tag descriptions
     my $names = [ $this->{name} ];
     # show all the records we have in our structures (recursively)
@@ -319,9 +322,9 @@ sub test_size {
     # if test fails, call die and hope it is intercepted
     my $precise = ""; $message = defined $message ? "($message)" : "";
     $required *= -1, $precise = "exactly " if $required < 0;
-    die sprintf "Size mismatch in segment %s %s:"
-	. " required %s%dB, found %dB.", $this->{name},
-	$message, $precise, $required, $this->size();
+    $this->die(sprintf 'Size mismatch in segment %s %s:'
+	       . ' required %s%dB, found %dB.', $this->{name},
+	       $message, $precise, $required, $this->size());
 }
 
 ###########################################################
@@ -361,6 +364,37 @@ sub set_data {
 }
 
 ###########################################################
+# This private method processes the arguments for search  #
+# routines, like search_record and provide_subdirectory.  #
+#  1) a start directory is chosen by looking at the last  #
+#     argument: if it is an ARRAY ref it is popped out    #
+#     and used, otherwise the top-level directory (i.e.,  #
+#     $this->{records}) is selected;                      #
+#  2) a $keystring is created by joining all remaining    #
+#     arguments on '@', then this string is exploded into #
+#     a @keylist on the same character;                   #
+#  3) the start directory and the @keylist is returned.   #
+###########################################################
+sub process_search_args {
+    my $this = shift;
+    # empty list ==> push a single undefined value 
+    @_ = (undef) unless @_;
+    # initialise the search directory: use the last argument if
+    # it is an array reference, the top-level directory otherwise
+    my $directory = ref $_[$#_] eq 'ARRAY' ? pop : $this->{records};
+    # delete all undefined or "false" arguments
+    @_ = grep { defined $_ } @_;
+    # join all remaining arguments
+    my $keystring = join('@', @_);
+    # split the resulting string on '@'
+    my @keylist = split('@', $keystring);
+    # delete all false arguments
+    @keylist = grep { $_ } @keylist;
+    # return processed arguments
+    return ($directory, @keylist);
+}
+
+###########################################################
 # This method searches for a record with a given key in a #
 # given record directory, returning a reference to the    #
 # record if the search was fruitful, undef otherwise.     #
@@ -381,20 +415,10 @@ sub set_data {
 ###########################################################
 sub search_record {
     my $this = shift;
-    # return immediately if @_ is empty
-    return undef unless @_;
-    # initialise the search directory: use the last argument if
-    # it is an array reference, the top-level directory otherwise
-    my $directory = ref $_[$#_] eq 'ARRAY' ? pop : $this->{records};
-    # delete the last argument if it is undefined (in practise, you
-    # can use a dirref initially set to undef for an interative search)
-    pop unless defined $_[$#_];
-    # reset the searched $record
-    my $record = undef;
-    # join all remaining arguments
-    my $keystring = join('@', @_);
-    # split the resulting string on '@'
-    my @keylist = split('@', $keystring);
+    # transform the arguments
+    my ($directory, @keylist) = $this->process_search_args(@_);
+    # reset the searched $record to a fake record pointing to the root
+    my $record = $this->create_record('Fake', $REFERENCE, \ $this->{records});
     # search iteratively with all elements in @keylist
     for my $key (@keylist) {
 	# exit the loop as soon as a key is undefined
@@ -428,21 +452,32 @@ sub search_record_value {
 }
 
 ###########################################################
-# This method looks for a REFERENCE record representing a #
-# subdirectory, in a given record list. The two arguments #
-# are the name of the subdirectory (a string) and a refe- #
-# rence to a record list; if the second argument is not   #
-# defined, it defaults to $this->{records}. If the subdir #
-# entry is not there, it is created on the fly.           #
+# This method looks for a path of subdirectories from a   #
+# given record list. The treatment of arguments is simi-  #
+# lar to that of search_record: all arguments are joined  #
+# to form a path specification, which is followed, and    #
+# the last directory (record list) is returned. An optio- #
+# nal last argument may specify an initial directory for  #
+# the search (this defaults to $this->{records}). If any  #
+# subdir entry is not there, it is created on the fly.    #
 ###########################################################
 sub provide_subdirectory {
-    my ($this, $dirname, $records) = @_;
-    # if the record list reference is undefined, fix it
-    $records = $this->{records} unless defined $records;
-    # search and return the subdirectory reference (create if absent)
-    my $dirref = $this->search_record($dirname, $records) ||
-	$this->store_record($records, $dirname, $REFERENCE, \ []);
-    return $dirref->get_value();
+    my $this = shift;
+    # transform the arguments
+    my ($dirref, @keylist) = $this->process_search_args(@_);
+    # search iteratively with all elements in @keylist
+    for my $key (@keylist) {
+	# keys cannot be undefined
+	$this->die('Undefined key') unless $key;
+	# search the subdirectory record
+	my $record = $this->search_record($key, $dirref) ||
+	    $this->store_record($dirref, $key, $REFERENCE, \ []);
+	# die if $record is not a $REFERENCE
+	$this->die('Not a reference') unless $record->get_category() eq 'p';
+	# update $dirref for next search
+	$dirref = $record->get_value(); }
+    # return the search result
+    return $dirref;
 }
 
 ###########################################################
@@ -525,6 +560,14 @@ sub store_record {
     # return a reference to the last record
     return $$records[$#$records];
 }
+
+###########################################################
+# Load other parts for this package. In order to avoid    #
+# that this file becomes too large, only general interest #
+# methods are written here.                               #
+###########################################################
+require 'Image/MetaData/JPEG/Segment_parsers.pl';
+require 'Image/MetaData/JPEG/Segment_dumpers.pl';
 
 # successful package load
 1;

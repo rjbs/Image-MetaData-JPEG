@@ -25,7 +25,6 @@ my $SubIFD_data = {
     &$val('LightSource')              =>  17,
     &$val('Flash')                    => [79],
     &$val('SubjectArea')              => [10, 20, 30],
-    &$val('MakerNote')                =>  '13@'."\023\133_ ..\377\000ab-_",
     &$val('UserComment')              => ["Unicode\000asdfgh"],
     'SubSecTime'                      =>  "133     \000",
     'FlashpixVersion'                 => ['0100'],
@@ -49,7 +48,7 @@ my $SubIFD_data = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (SUBIFD_DATA)";
-plan tests => 45;
+plan tests => 46;
 #=======================================
 
 #########################
@@ -99,8 +98,11 @@ is_deeply( $$hash{'FlashpixVersion'}, ['0100'],
 is_deeply( $$hash{'ColorSpace'}, [1], "Automatic ColorSpace works" );
 
 #########################
-is_deeply( [${$$hash{'PixelXDimension'}}[0], ${$$hash{'PixelYDimension'}}[0]],
-	   [$image->get_dimensions()], "Automatic dimensions work" );
+# Remember that if you want to test with get_dimensions()
+# you have to parse also the SOF segment.
+is_deeply( [${$$hash{'PixelXDimension'}}[0],
+	    ${$$hash{'PixelYDimension'}}[0]],
+	   [0, 0], "Meaningful dimensions set to 0x0" );
 
 #########################
 $seg->set_Exif_data({'ExifVersion' => ['0210']}, 'SUBIFD_DATA', 'ADD');
@@ -120,7 +122,6 @@ is_deeply( $hash, {}, "adding without the SubIFD dir" );
 $ref = \ "dummy";
 $image->save($ref);
 $image2 = $cname->new($ref, '^APP1$');
-$_->{parent} = $image for @{$image2->{segments}}; # parental link hack
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################
@@ -129,6 +130,10 @@ $d2 = $image2->get_description();
 $d1 =~ s/(.*REFERENCE.*-->).*/$1/g; $d1 =~ s/Original.*//g;
 $d2 =~ s/(.*REFERENCE.*-->).*/$1/g; $d2 =~ s/Original.*//g;
 is( $d1, $d2, "Descriptions after write/read cycle are coincident" );
+
+#########################
+$hash = $image->set_Exif_data({'MakerNote'=>"\023b-_"}, 'SUBIFD_DATA', 'ADD');
+ok( exists $$hash{&$val('MakerNote')}, "The MakerNote cannot be changed" );
 
 #########################
 $hash = $image->set_Exif_data({'FNumber' => [3, -1]}, 'SUBIFD_DATA', 'ADD');

@@ -98,7 +98,6 @@ is_deeply( $hash, {}, "adding without the GPS dir" );
 $ref = \ "dummy";
 $image->save($ref);
 $image2 = $cname->new($ref, '^APP1$');
-$_->{parent} = $image for @{$image2->{segments}}; # parental link hack
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################

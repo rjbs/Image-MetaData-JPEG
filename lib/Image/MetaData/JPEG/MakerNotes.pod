@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004 Stefano Bettelli                     #
+# Copyright (C) 2004,2005 Stefano Bettelli                #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 
@@ -10,39 +10,162 @@
 # type "perldoc <name_of_this_file>".                     #
 ###########################################################
 
-=head1 RANDOM INFORMATION ON MAKERNOTES
+=head1 NAME
 
-This document is an appendix to the main manual page of the
-L<Image::MetaData::JPEG> module, which the reader should refer to for
-further details and the general scope.
+Image::MetaData::JPEG::MakerNotes - This document is an appendix to the
+main manual page of the L<Image::MetaData::JPEG> module, which the reader
+should refer to for further details and the general scope. This document
+contains random information and details on MakerNotes.
 
-=head2 On the problem of MakerNote corruption
+=head1 On the problem of MakerNote corruption and ways to overcome it
 
 A widespread problem with Exif I<maker notes> is that there is no common
 standard for how to parse and rewrite the information in the I<MakerNote>
 data area. This is the reason why most programs dealing with Exif JPEG
 files corrupt the MakerNote on saving, or decide to drop it altogether (be
-aware that there exist programs known to hang when they try to read a
+aware that there existed programs known to hang when they try to read a
 corrupt maker note).
 
 In fact, many maker notes contain a non-standard I<IFD> structure, with
-some tags storing file offsets (see the documentation page describying the
+some tags storing file offsets (see the documentation page describing the
 L<IFD structure|Image::MetaData::JPEG::Structures/Structure of an Exif APP1
 segment>). Therefore, saving a maker note without regard for internal
-offsets's adjustment reduces the note mostly to garbage. Re-dumping a maker
+offsets' adjustment reduces the note mostly to garbage. Re-dumping a maker
 note after changing the Exif APP1 segment endianness incurs the same
 problem, because no internal byte-swap is performed.
 
-It is possible to try to cure some maker note corruption problems,
-if the reader program is a little "brave". For example, the number
-of tags in an IFD-like maker note is always in the range [1,255],
-so the two-bytes tag count has always the most significant byte set
-to zero: therefore, a simple check allows for the determination of the
-correct byte order (endianness). Also, most often the maker note data
-area begins just after the tag list, so, if the first detected offset
-is patently wrong, it can be rescaled, as all of the following ones,
-to point to this spot; alternatively, all data blocks can be read in
-sequence from this spot, independently of stored offset values.
+A few countermeasures have been introduced in this package to try to cure
+some maker note problems. The first one concerns the correct byte order
+(the endianness, which is not always the same used in the Exif segment),
+which needs not to be known in advance; it is in fact determined by using
+the fact that, if the note is IFD-like (even non-standard), the number of
+tags is always in the range [1,255], so the two-bytes tag count has always
+the most significant byte set to zero, and the least significant byte set
+to non-zero.
+
+There is also a prediction and correction mechanism for the offsets in the
+interoperability arrays, based on the simple assumption that the absolute
+value of offsets can be wrong, but their differences are always right, so,
+if one can get the first one right ... a good bet is the address of the
+byte immediately following the next_IFD link (or the tag list, if this link
+is absent). If the parsing process does not end successfully, this
+mechanism is enabled and its "corrected" findings are stored instead of the
+original ones if it is able to cure the problems (i.e., if the second try
+at parsing the note is successful).
+
+=head2 Pieces of information available after parsing the MakerNote
+
+The result of the process of parsing the maker note is stored in a
+directory in the internal data structure for the APP1 Segment, whose path
+is "IFD@SubIFD@MakerNoteData_$format", where $format is the specific note
+format; the 'MakerNote' entry in IFD0@SubIFD is then removed. This
+translation happens always, because there is a catch-all 'unknown' rule for
+a binary makernote with very broad acceptance rules. The maker note
+directory contains, in addition, a special subdir with some fields
+reporting about the parsing process.
+
+    key         content
+    --------    -------
+    ORIGINAL    the raw content of the maker note (unparsed)
+    SIGNATURE   the first few bytes which allowed the format to be chosen
+    ENDIANNESS  the byte order chosen during parsing
+    FORMAT      the maker note format chosen during parsing
+    ERROR       [optional] error details, in case of failure while parsing
+
+=head1 Supported MakerNote formats
+
+Maker note formats are specified in a special internal hash, with a key for
+each format (including the 'unknown' format). Each format entry corresponds
+to an anonymous hash containing information for parsing the MakerNote; the
+"normal" format is considered to be an IFD-like MakerNote with a next_link
+pointer, offsets counted from the global TIFF header and no MakerNote
+internal TIFF header.
+
+        key         meaning or effect
+        ---------   -----------------
+        signature   the MakerNote signature (a regular expression)
+        maker       the Maker signature (i.e., its name, no regex)
+        tags        a reference to a hash for tag translations
+    (A) mkntstart   if set, offsets are counted from the maker note start
+    (B) mkntTIFF    if set, offsets are counted from the internal TIFF header
+    (C) ignore      if set, the format is to be ignored
+    (D) nonext      if set, the maker note IFD does not have a next_link
+    (E) endianness  if set, the byte order is fixed to this value
+    (F) nonIFD      if set, the maker note is not IFD-like
+
+Currently, "supported" formats are described in the following table;
+authoritative data is indeed kept in Tables_makernotes.pl, to which the
+reader should refer for tag definitions and translations. Remember that
+both the 'signature' and the 'maker' fields are regular expressions
+matching at the beginning (the real signature corresponds to $1).
+
+                A B C D E F Maker     Signature
+		----------- --------- -----------------
+    Agfa                    AGFA      (AGFA \000\001)
+    Canon                   Canon     ()
+    Casio_1                 CASIO     ()[^Q]
+    Casio_2                 CASIO     (QVC\000{3})
+    Epson                   EPSON     (EPSON\000\001\000)
+    Foveon                  FOVEON    (FOVEON\000{2}\001\000)
+    Fujifilm    x           FUJIFILM  (FUJIFILM\014\000{3})
+    HPackard        x       Hewlett-Packard    (HP)
+    Kyocera     x     x     KYOCERA   (KYOCERA {12}\000{3})
+    Kodak               B x KODAK     (KDK INFO[a-zA-Z0-9]*  )
+    Minolta_1               MINOLTA   ().{10}MLT0 
+    Minolta_2               Minolta   ().{10}MLT0
+    Konica          x       Minolta|KONICA ((MLY|KC|(\+M){4})|\001\000{5}\004)
+    Nikon_1                 NIKON     (Nikon\000\001\000)
+    Nikon_2                 NIKON     ()[^N] 
+    Nikon_3       x         NIKON     (Nikon\000\002[\020\000]\000{2})
+    Olympus                 OLYMPUS   (OLYMP\000[\001\002]\000) 
+    Panasonic_1       x     Panasonic (Panasonic\000{3})
+    Panasonic_2     x x     Panasonic (MKED)
+    Pentax_1    x           Asahi     ()[^A]
+    Pentax_2    x     x     Asahi     (AOC\000..)
+    Ricoh_1         x       RICOH     (Rv|Rev)
+    Ricoh_2         x       RICOH     (\000)
+    Ricoh_3                 RICOH     ((Ricoh|RICOH)\000{3})
+    Sanyo                   SANYO     (SANYO\000\001\000)
+    Sigma                   SIGMA     (SIGMA\000{3}\001\000)
+    Sony              x     SONY      (SONY (CAM|DSC) \000{3})
+    Toshiba         x       TOSHIBA   ()
+    unknown             x   .         ()
+
+=head1 References
+
+MakerNote format details are not usually released by vendors (well, this is
+an euphemism: no vendor ever, to my knowledge, released any detail on its
+format, exception made for Sigma/Foveon). All information used for this
+package was collected on the Internet (and its reliability is therefore
+limited) or through personal tests. Some interesting sites are (not an
+exhaustive list at all):
+
+  General:   home.arcor.de/ahuggel/exiv2/makernote.html
+    .....:   www.ozhiker.com/electronics/pjmt/jpeg_info/makernotes.html
+
+  Agfa:      www.ozhiker.com/electronics/pjmt/jpeg_info/agfa_mn.html
+  Canon:     www.burren.cx/david/canon.html
+  Casio:     park2.wakwak.com/~tsuruzoh/Computer/Digicams/exif-e.html
+    ...:     www.dicasoft.de/casiomn.htm
+  Epson:     www.ozhiker.com/electronics/pjmt/jpeg_info/epson_mn.html
+  Foveon:    Foveon is the same as Sigma, see Sigma
+  Fujifilm:  park2.wakwak.com/~tsuruzoh/Computer/Digicams/exif-e.html
+    ......:  www.ozhiker.com/electronics/pjmt/jpeg_info/fujifilm_mn.html
+  Kyocera:   www.ozhiker.com/electronics/pjmt/jpeg_info/kyocera_mn.html
+  Kodak:     my personal tests with my Kodak DX3900 (not IFD-like)
+  Minolta:   www.dalibor.cz/minolta/makernote.htm
+    .....:   www.ozhiker.com/electronics/pjmt/jpeg_info/minolta_mn.html
+  Nikon:     park2.wakwak.com/~tsuruzoh/Computer/Digicams/exif-e.html
+    ...:     www.tawbaware.com/990exif.htm
+    ...:     www.ozhiker.com/electronics/pjmt/jpeg_info/nikon_mn.html
+  Olympus:   park2.wakwak.com/~tsuruzoh/Computer/Digicams/exif-e.html
+    .....:   www.ozhiker.com/electronics/pjmt/jpeg_info/olympus_mn.html
+  Panasonic: www.compton.nu/panasonic.html
+  Pentax:    www.ozhiker.com/electronics/pjmt/jpeg_info/pentax_mn.html
+  Ricoh:     www.ozhiker.com/electronics/pjmt/jpeg_info/ricoh_mn.html
+  Sanyo:     www.exif.org/makernotes/SanyoMakerNote.html
+  Sigma:     www.x3f.info/technotes/FileDocs/MakerNoteDoc.html
+  Sony:      www.ozhiker.com/electronics/pjmt/jpeg_info/sony_mn.html
 
 =head1 AUTHOR
 
@@ -50,7 +173,7 @@ Stefano Bettelli, B<bettelli@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2004 by Stefano Bettelli
+Copyright (C) 2004,2005 by Stefano Bettelli
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU L<General Public License|perlgpl>. See the
