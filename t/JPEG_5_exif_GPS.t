@@ -7,7 +7,7 @@ use Image::MetaData::JPEG::Tables;
 my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
-my ($image, $image2, $seg, $hash, $lat, $track, $str, $d1, $d2, $ref);
+my ($image, $image2, $seg, $hash, $lat, $long, $track, $str, $d1, $d2, $ref);
 
 my $GPS_data = {
     'GPSLatitudeRef'  => "N\000",
@@ -43,7 +43,7 @@ my $GPS_data = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (GPS_DATA)";
-plan tests => 39;
+plan tests => 45;
 #=======================================
 
 #########################
@@ -129,7 +129,7 @@ ok( exists $$hash{2}, "... rejected again ..." );
 #########################
 $lat = [92, 1, 7, 1, 47, 1];
 $hash = $image->set_Exif_data({'GPSLatitude' => $lat}, 'GPS_DATA', 'ADD');
-ok( exists $$hash{2}, "... and again" );
+ok( exists $$hash{2}, "Overflowing Latitude rejected" );
 
 #########################
 $lat = [57, 1, 1400, 100, 0, 1];
@@ -155,6 +155,36 @@ ok( exists $$hash{2}, "... negative elements are invalid" );
 $lat = [90, 1, 0, 100, 0, 1];
 $hash = $image->set_Exif_data({'GPSLatitude' => $lat}, 'GPS_DATA', 'ADD');
 ok( ! exists $$hash{2}, "You can write North Pole" );
+
+#########################
+$lat = [133, 1, 7, 1, 47, 1];
+$hash = $image->set_Exif_data({'GPSDestLatitude' => $lat}, 'GPS_DATA', 'ADD');
+ok( exists $$hash{0x14}, "Overflowing DestLatitude rejected" );
+
+#########################
+$lat = [77, 1, 7, 1, 47, 1];
+$hash = $image->set_Exif_data({'GPSDestLatitude' => $lat}, 'GPS_DATA', 'ADD');
+ok( ! exists $$hash{0x14}, "Correct DestLatitude accepted" );
+
+#########################
+$long = [182, 1, 7, 1, 47, 1];
+$hash = $image->set_Exif_data({'GPSLongitude' => $long}, 'GPS_DATA', 'ADD');
+ok( exists $$hash{4}, "Overflowing Longitude rejected" );
+
+#########################
+$long = [123, 1, 744, 100, 0, 1];
+$hash = $image->set_Exif_data({'GPSLongitude' => $long}, 'GPS_DATA', 'ADD');
+ok( ! exists $$hash{4}, "Longitude in [0,180] accepted" );
+
+#########################
+$long = [211, 1, 7, 1, 47, 1];
+$hash = $image->set_Exif_data({'GPSDestLongitude' => $long}, 'GPS_DATA','ADD');
+ok( exists $$hash{0x16}, "Overflowing DestLongitude rejected" );
+
+#########################
+$long = [177, 1, 7, 1, 47, 1];
+$hash = $image->set_Exif_data({'GPSDestLongitude' => $long}, 'GPS_DATA','ADD');
+ok( ! exists $$hash{0x16}, "Correct DestLongitude accepted" );
 
 #########################
 $track = [3500, 10];

@@ -12,10 +12,10 @@
 
 =head1 NAME
 
-Image::MetaData::JPEG::Structures - This document is an appendix to the
-main manual page of the L<Image::MetaData::JPEG> module, which the reader
-should refer to for further details and the general scope. This document
-contains information about the structure of a JPEG file.
+Image::MetaData::JPEG::Structures - This document describes the structure
+of a JPEG file; it is an appendix to the main manual page of the
+L<Image::MetaData::JPEG> module, which the reader should refer to for
+further details and the general scope.
 
 =head1 THE STRUCTURE OF JPEG PICTURES
 

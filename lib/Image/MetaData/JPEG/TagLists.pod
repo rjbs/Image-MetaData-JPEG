@@ -12,10 +12,10 @@
 
 =head1 NAME
 
-Image::MetaData::JPEG::TagLists - This document is an appendix to the main
-manual page of the L<Image::MetaData::JPEG> module, which the reader should
-refer to for further details and the general scope. This document contains
-a collection of tag tables for JPEG segments.
+Image::MetaData::JPEG::TagLists - This document contains a collection of
+tag tables for JPEG segments; it is an appendix to the main manual page of
+the L<Image::MetaData::JPEG> module, which the reader should refer to for
+further details and the general scope.
 
 =head1 Valid tags for Exif APP1 data
 
@@ -529,7 +529,8 @@ i.e. v.2.2, is automatically added by this module if necessary).
      integers), representing degrees, minutes and seconds. A typical format
      is (dd/1, mm/1, ss/1). Sometimes, seconds are dropped in favour of
      fractions of minutes (usually with two decimal places); in this case
-     the format is (dd/1, mmmm/100, 0/1).
+     the format is (dd/1, mmmm/100, 0/1). Latitudes are limited to the
+     interval [0,90], while longitudes to [0,180].
   3) A "speed (distance) reference" is the unit for the speed (distance)
      value stored in another (related) tag. The only allowed values are 'K'
      (for Km/h or Km), 'M' (for miles/h or miles) or 'N' (knots). Let us

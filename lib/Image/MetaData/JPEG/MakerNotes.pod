@@ -12,10 +12,10 @@
 
 =head1 NAME
 
-Image::MetaData::JPEG::MakerNotes - This document is an appendix to the
-main manual page of the L<Image::MetaData::JPEG> module, which the reader
-should refer to for further details and the general scope. This document
-contains random information and details on MakerNotes.
+Image::MetaData::JPEG::MakerNotes - This document contains random
+information and details on MakerNotes; it is an appendix to the main manual
+page of the L<Image::MetaData::JPEG> module, which the reader should refer
+to for further details and the general scope.
 
 =head1 On the problem of MakerNote corruption and ways to overcome it
 

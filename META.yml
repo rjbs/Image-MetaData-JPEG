@@ -1,7 +1,7 @@
 # http://module-build.sourceforge.net/META-spec.html
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         Image-MetaData-JPEG
-version:      0.14
+version:      0.141
 version_from: lib/Image/MetaData/JPEG.pm
 installdirs:  site
 requires:

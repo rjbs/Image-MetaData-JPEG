@@ -577,8 +577,9 @@ my $SSR_triplet    = sub { my $limit = shift; die if grep { $_ < 0 } @_;     #
 			   die unless $mm < 60 && $ss < 60 && $dd <= $limit; #
 			   die unless ($dd + $mm /60 + $ss/360) <= $limit;}; #
 # a latitude or a longitude is stored as a sequence of three rationals nums  #
-# (degrees, minutes and seconds) with degrees <= 90 (see $SSR_triplet).      #
-my $SSR_latlong    = sub { &$SSR_triplet(90, @_); };                         #
+# (degrees, minutes and seconds) with degrees<=90 or 180 (see $SSR_triplet). #
+my $SSR_latitude   = sub { &$SSR_triplet( 90, @_); };                        #
+my $SSR_longitude  = sub { &$SSR_triplet(180, @_); };                        #
 # a time stamp is stored as three rationals (hours, minutes and seconds); in #
 # this case hours must be <= 24 (see $SSR_triplet for further details).      #
 my $SSR_stupidtime = sub { &$SSR_triplet(24, @_); };                         #
@@ -588,9 +589,9 @@ my $HASH_GPS_MANDATORY = {'GPSVersionID' => [2,2,0,0]};                      #
 my $HASH_GPS_GENERAL =                                                       #
 {0x00 => ['GPSVersionID',                 $BYTE,      4, '.'             ],  #
  0x01 => ['GPSLatitudeRef',               $ASCII,     2, $GPS_re_NS      ],  #
- 0x02 => ['GPSLatitude',                  $RATIONAL,  3, $SSR_latlong    ],  #
+ 0x02 => ['GPSLatitude',                  $RATIONAL,  3, $SSR_latitude   ],  #
  0x03 => ['GPSLongitudeRef',              $ASCII,     2, $GPS_re_EW      ],  #
- 0x04 => ['GPSLongitude',                 $RATIONAL,  3, $SSR_latlong    ],  #
+ 0x04 => ['GPSLongitude',                 $RATIONAL,  3, $SSR_longitude  ],  #
  0x05 => ['GPSAltitudeRef',               $BYTE,      1, '[01]'          ],  #
  0x06 => ['GPSAltitude',                  $RATIONAL,  1, $GPS_re_number  ],  #
  0x07 => ['GPSTimeStamp',                 $RATIONAL,  3, $SSR_stupidtime ],  #
@@ -606,9 +607,9 @@ my $HASH_GPS_GENERAL =                                                       #
  0x11 => ['GPSImgDirection',              $RATIONAL,  1, $SSR_direction  ],  #
  0x12 => ['GPSMapDatum',                  $ASCII, undef, $GPS_re_Cstring ],  #
  0x13 => ['GPSDestLatitudeRef',           $ASCII,     2, $GPS_re_NS      ],  #
- 0x14 => ['GPSDestLatitude',              $RATIONAL,  3, $SSR_latlong    ],  #
+ 0x14 => ['GPSDestLatitude',              $RATIONAL,  3, $SSR_latitude   ],  #
  0x15 => ['GPSDestLongitudeRef',          $ASCII,     2, $GPS_re_EW      ],  #
- 0x16 => ['GPSDestLongitude',             $RATIONAL,  3, $SSR_latlong    ],  #
+ 0x16 => ['GPSDestLongitude',             $RATIONAL,  3, $SSR_longitude  ],  #
  0x17 => ['GPSDestBearingRef',            $ASCII,     2, $GPS_re_direref ],  #
  0x18 => ['GPSDestBearing',               $RATIONAL,  1, $SSR_direction  ],  #
  0x19 => ['GPSDestDistanceRef',           $ASCII,     2, $GPS_re_spdsref ],  #

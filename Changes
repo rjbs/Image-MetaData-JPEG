@@ -1,3 +1,35 @@
+2005-03-21  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG.pm: setting $VERSION to 0.141,
+	and posting to CPAN. This is only a minor bugfix release.
+	=================================================
+        Most relevant changes from version 0.14 to 0.141:
+	=================================================
+        * rt.cpan.org bug #11950 fixed
+        * Descriptions in documentation annexes fixed.
+	
+	* lib/Image/MetaData/JPEG/Structures.pod: modify the description,
+	so that the first line contains the real description for this 
+	document and not the note about it being an appendix. Same change
+	in TagLists.pod and MakeNotes.pod.
+
+	* t/JPEG_5_exif_GPS.t: a few tests added for correct limits on
+	longitudes and latitudes after closing the bug.
+
+	* lib/Image/MetaData/JPEG/Tables.pm: closing rt.cpan.org bug #11950,
+	"GPSLongitude field being dropped" (thanks to John Harvey). The
+	special rule for longitudes is not the same as that for latitudes,
+	because the limit is 180deg and not 90deg. Replaced $SSR_latlong
+	with $SSR_latitude (for 'GPSLatitude' and 'GPSDestLatitude') and
+	$SSR_longitude (for 'GPSLongitude' and 'GPSDestLongitude').
+
+	* lib/Image/MetaData/JPEG/TagLists.pod (GPS tags): Latitudes are
+	limited to the interval [0,90], while longitudes to [0,180].
+
+2005-03-16  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG.pm: setting $VERSION to 0.14, and posting
+	to CPAN. This should be in sync with next version of MaPiVi now.
 	================================================
         Most relevant changes from version 0.13 to 0.14:
 	================================================
@@ -22,11 +54,6 @@
 	  (reference values were not printed correctly).
 	* New documentation section on the history of JPEG image file formats
 	* Script 'read_JPEG_metadata' added to distribution
-
-2005-03-16  Stefano Bettelli  <bettelli@cpan.org>
-
-	* lib/Image/MetaData/JPEG.pm: setting $VERSION to 0.14, and posting
-	to CPAN. This should be in sync with next version of MaPiVi now.
 
 2005-03-07  Stefano Bettelli  <bettelli@cpan.org>
 
