@@ -1,0 +1,66 @@
+Some references used during the preparation
+of the JPEG metadata parsing Perl module
+
+Acronyms:
+
+EXIF  = EXchangeable Image File format
+JPEG  = Joint Photographic Experts Group format
+TIFF  = Tagged Image File Format
+IFD   = Image File Directory
+
+References:
+
+	"TIFF(TM) Revision 6.0 Final", June 3 1992,
+	Adobe Developers Association, Developer's Desk,
+	Aldus Corporation, 411 First Ave. South, Suite 200
+	Seattle, WA  98104, 206-622-5500
+
+	"Design rule for Camera File system", v1.0
+	 English Version 1999.1.7, Adopted December 1998
+	Japan Electronic Industry Development Association (JEIDA)
+
+	"Digital Still Camera Image File Format Standard
+	 (Exchangeable image file format for Digital Still Cameras: Exif)"
+	Version 2.1 (June 12,1998)
+	Japan Electronic Industry Development Association (JEIDA)
+
+	"Exchangeable image file format for digital still cameras:
+	 Exif Version 2.2", JEITA CP-3451, April 2002
+	Japan Electronic Industry Development Association (JEIDA)
+
+	"Digital compression and coding of continuous-tone still images:
+	 requirements and guidelines", CCITT recommendation T.81, 09/1992,
+	The International Telegraph and Telephone Consultative Committee.
+
+	"\"Solo\" Image File Format. RichTIFF and its replacement
+	 by \"Solo\" JFIF", version 2.0a, 14Oct1998
+	Coatsworth Communications Inc., Brampton, Ontario, Canada
+
+	"IPTC-NAA: Information Interchange Model", version 4, 1-Jul-1999
+	Comite Internationale des Telecommunications de Presse.
+	IPTC: International Press Telecommunications Council.
+	NAA:  Newspaper Association of America
+	(note: absurd hexadecimal notation, e.g. 7/10 means 0x7a)
+ 
+	"XMP, Adding Intelligence to Media", XMP specification,
+	Adobe System Inc., January 2004.
+
+	"Adobe Photoshop 6.0: File Formats Specifications",
+	Adobe System Inc., ver.6.0, rel.2, November 2000.
+
+	"Supporting the DCT Filters in PostScript Level 2",
+	Adobe Developer Support, Technical Note #5116 ---> APP14
+
+	"Specification ICC.1:2003-09, File Format for Color Profiles
+	 (version 4.1.0)", International Color Consortium.
+
+	http://www.blackice.com/Help/Tools/
+               TIFF%20OCX%20webhelp/WebHelp/What_is_JPEG_.htm
+
+	APP14: http://www.codeproject.com/bitmap/iptc.asp
+
+	http://www.media.mit.edu/pia/Research/deepview/exif.html
+
+	http://park2.wakwak.com/~tsuruzoh/Computer/Digicams/exif-e.html
+
+	http://www.adobe.com/Support/TechNotes.html

@@ -1,0 +1,128 @@
+use Test::More;
+use strict;
+use warnings;
+use Image::MetaData::JPEG;
+
+my $cname  = 'Image::MetaData::JPEG';
+my $tphoto = 't/test_photo.jpg';
+my $tdata  = 't/test_photo.desc';
+my $cphoto = 't/test_photo_copy.jpg';
+my $limit  = 2**16 - 3;
+my $com2   = 'x' x $limit;
+my $com3   = 'x' x ($limit + 1);
+my $com4   = "Regular comment";
+my ($image, $newim, @list, $num, @savelist, @sl);
+
+my $reduce = sub {
+    @{$_[0]} = map {(length $_ > $limit) ? (substr($_,0,$limit),
+					    substr($_,$limit)) :$_} @{$_[0]};};
+
+#===============================
+diag "Testing comment routines";
+plan tests => 20;
+#===============================
+
+#########################
+$image = $cname->new($tphoto);
+is( $image->get_number_of_comments(), $num=1, "Get number of comments" );
+
+#########################
+$image->add_comment($com2);
+is( $image->get_number_of_comments(), ++$num, "Two comments now" );
+
+#########################
+@list = $image->get_comments();
+is( $list[1], $com2, "Rereading second comment" );
+
+#########################
+$image->add_comment($com3);
+is( $image->get_number_of_comments(), ($num+=2), "Comment too long, broken" );
+
+#########################
+$image->set_comment(2, $com4);
+@list = $image->get_comments();
+is( $list[2], $com4, "Setting an existing comment" );
+
+#########################
+isnt( $list[2], $com3, "Just to see we really read" );
+
+#########################
+$image->set_comment(0, $com3);
+is( $image->get_number_of_comments(), ++$num, "Set with long comment" );
+
+#########################
+@savelist = $image->get_comments();
+is( $savelist[2], $com2, "Second comment now third" );
+
+#########################
+$image->set_comment(2, undef);
+is( $image->get_number_of_comments(), --$num, "Erase comment with undef set" );
+
+#########################
+$image->remove_comment(1);
+is( $image->get_number_of_comments(), --$num, "Remove one comment" );
+
+#########################
+open DUP_ERR, ">&STDERR"; close STDERR;
+$image->remove_comment(-1);
+open STDERR, ">&DUP_ERR"; close DUP_ERR;
+is( $image->get_number_of_comments(), $num, "Remove out-of-bound" );
+
+#########################
+open DUP_ERR, ">&STDERR"; close STDERR;
+$image->remove_comment($num);
+open STDERR, ">&DUP_ERR"; close DUP_ERR;
+is( $image->get_number_of_comments(), $num, "Remove out-of-bound (2)" );
+
+#########################
+$image->remove_all_comments();
+is( $image->get_number_of_comments(), 0, "Erase all comments" );
+
+#########################
+@list = $image->get_comments();
+is_deeply( \ @list, [], "No comments as a list" );
+
+#########################
+$image->add_comment($_) for @savelist; $num = @savelist;
+is( $image->get_number_of_comments(), $num, "Restoring comments" );
+
+#########################
+@sl = @savelist;
+@sl = ( $sl[0]."-".$sl[2]."-".$sl[4], $sl[1], $sl[3]);
+&$reduce(\@sl) for (1..((length $sl[0]) / $limit));
+$image->join_comments("-", 0, 2, 4);
+@list = $image->get_comments();
+is_deeply( \@list, \@sl, "Complex joining" );
+
+#########################
+@sl = (join "***", @sl);
+&$reduce(\@sl) for (1..((length $sl[0]) / $limit));
+$image->join_comments("***");
+@list = $image->get_comments();
+is_deeply( \@list, \@sl, "Total joining" );
+
+#########################
+$image->remove_all_comments();
+$image->add_comment($_) for @savelist; $num = @savelist;
+$image->save($cphoto);
+$newim = $cname->new($cphoto);
+@list = $newim->get_comments();
+unlink $cphoto;
+is_deeply( \@list, \@savelist, "Save and re-read" );
+
+#########################
+$image->remove_all_comments();
+$image->add_comment("Dummy");
+$image->set_comment(0, "");
+$image->save($cphoto);
+$newim = $cname->new($cphoto);
+ok( $newim, "Saving a picture with a null comment" );
+
+#########################
+@list = $newim->get_comments();
+unlink $cphoto;
+is_deeply( \@list, [ "" ], "The comment is really null" );
+
+### Local Variables: ***
+### mode:perl ***
+### End: ***

@@ -1,0 +1,146 @@
+Original JPEG file: t/test_photo.jpg
+(2160x1440)
+      0B <0xd8   SOI>
+   6134B <0xe1  APP1>
+ 	[               Identifier]<......> = [    ASCII] "Exif\00\00"
+ 	[               Endianness]<......> = [    ASCII] "MM"
+ 	[                Signature]<......> = [    SHORT]  42
+ 	[             IFD0_Pointer]<......> = [     LONG]  8
+ 	[                     IFD0]<......> = [REFERENCE]  --> 8163aec
+ 	[                     IFD1]<......> = [REFERENCE]  --> 82b5bf8
+ 	[            ThumbnailData]<......> = [    UNDEF]  ff d8 ff db 00 84 00 09 ... (3914 more values)
+ 	 	********** APP1 --> IFD0 ********** ( 9 records)
+ 	 	[                     Make]<0x010f> = [    ASCII] "EASTMAN KODAK COMPANY\00"
+ 	 	[                    Model]<0x0110> = [    ASCII] "KODAK DX3900 ZOOM DIGITAL CAMERA\00"
+ 	 	[              Orientation]<0x0112> = [    SHORT]  1
+ 	 	[              XResolution]<0x011a> = [ RATIONAL]  230/1
+ 	 	[              YResolution]<0x011b> = [ RATIONAL]  230/1
+ 	 	[           ResolutionUnit]<0x0128> = [    SHORT]  2
+ 	 	[         YCbCrPositioning]<0x0213> = [    SHORT]  1
+ 	 	[               ExifOffset]<0x8769> = [     LONG]  506
+ 	 	[                   SubIFD]<......> = [REFERENCE]  --> 81653e0
+ 	 	 	********** APP1 --> IFD0 --> SubIFD ********** (26 records)
+ 	 	 	[             ExposureTime]<0x829a> = [ RATIONAL]  1/45
+ 	 	 	[                  FNumber]<0x829d> = [ RATIONAL]  34/10
+ 	 	 	[          ExposureProgram]<0x8822> = [    SHORT]  2
+ 	 	 	[              ExifVersion]<0x9000> = [    UNDEF]  30 32 31 30
+ 	 	 	[         DateTimeOriginal]<0x9003> = [    ASCII] "2000:11:04 06:36:53\00"
+ 	 	 	[        DateTimeDigitized]<0x9004> = [    ASCII] "2000:11:04 06:36:53\00"
+ 	 	 	[  ComponentsConfiguration]<0x9101> = [    UNDEF]  01 02 03 00
+ 	 	 	[        ShutterSpeedValue]<0x9201> = [SRATIONAL]  55/10
+ 	 	 	[            ApertureValue]<0x9202> = [ RATIONAL]  35/10
+ 	 	 	[        ExposureBiasValue]<0x9204> = [SRATIONAL]  0/1000
+ 	 	 	[         MaxApertureValue]<0x9205> = [ RATIONAL]  35/10
+ 	 	 	[             MeteringMode]<0x9207> = [    SHORT]  3
+ 	 	 	[              LightSource]<0x9208> = [    SHORT]  0
+ 	 	 	[                    Flash]<0x9209> = [    SHORT]  1
+ 	 	 	[              FocalLength]<0x920a> = [ RATIONAL]  117/10
+ 	 	 	[                MakerNote]<0x927c> = [    UNDEF]  4b 44 4b 20 49 4e 46 4f ... (916 more values)
+ 	 	 	[          FlashPixVersion]<0xa000> = [    UNDEF]  30 31 30 30
+ 	 	 	[               ColorSpace]<0xa001> = [    SHORT]  1
+ 	 	 	[          PixelXDimension]<0xa002> = [    SHORT]  2160
+ 	 	 	[          PixelYDimension]<0xa003> = [    SHORT]  1440
+ 	 	 	[   InteroperabilityOffset]<0xa005> = [     LONG]  1900
+ 	 	 	[            ExposureIndex]<0xa215> = [ RATIONAL]  400/1
+ 	 	 	[            SensingMethod]<0xa217> = [    SHORT]  2
+ 	 	 	[               FileSource]<0xa300> = [    UNDEF]  03
+ 	 	 	[                SceneType]<0xa301> = [    UNDEF]  01
+ 	 	 	[                  Interop]<......> = [REFERENCE]  --> 82b4b9c
+ 	 	 	 	********** APP1 --> IFD0 --> SubIFD --> Interop ********** ( 2 records)
+ 	 	 	 	[    InteroperabilityIndex]<0x0001> = [    ASCII] "R98\00"
+ 	 	 	 	[  InteroperabilityVersion]<0x0002> = [    UNDEF]  30 31 30 30
+ 	 	********** APP1 --> IFD1 ********** ( 7 records)
+ 	 	[              Compression]<0x0103> = [    SHORT]  6
+ 	 	[              Orientation]<0x0112> = [    SHORT]  1
+ 	 	[              XResolution]<0x011a> = [ RATIONAL]  72/1
+ 	 	[              YResolution]<0x011b> = [ RATIONAL]  72/1
+ 	 	[           ResolutionUnit]<0x0128> = [    SHORT]  2
+ 	 	[    JPEGInterchangeFormat]<0x0201> = [     LONG]  2204
+ 	 	[ JPEGIntercha...matLength]<0x0202> = [     LONG]  3922
+    130B <0xdb   DQT>
+ 	[   PrecisionAndIdentifier]<......> = [  NIBBLES]  0 0
+ 	[        QuantizationTable]<......> = [     BYTE]  9 9 9 9 9 9 12 11 ... (56 more values)
+ 	[   PrecisionAndIdentifier]<......> = [  NIBBLES]  0 1
+ 	[        QuantizationTable]<......> = [     BYTE]  9 9 9 9 9 9 12 11 ... (56 more values)
+     18B <0xfe   COM>
+ 	[                  Comment]<......> = [    ASCII] "This is a comment\0a"
+   5444B <0xed APP13>
+ 	[               Identifier]<......> = [    ASCII] "Photoshop 3.0\00"
+ 	[            IPTC_RECORD_2]<......> = [REFERENCE] <> --> 82b893c
+ 	[?? Unknown record type ??]<0x0425> = [    UNDEF] <> f5 8a 44 6d 60 cb b1 88 ... (8 more values)
+ 	[           ResolutionInfo]<0x03ed> = [    UNDEF] <> 01 2c 00 00 00 01 00 02 ... (8 more values)
+ 	[?? Unknown record type ??]<0x0426> = [    UNDEF] <> 00 00 00 00 00 00 00 00 ... (6 more values)
+ 	[              GlobalAngle]<0x040d> = [    UNDEF] <> 00 00 00 1e
+ 	[           GlobalAltitude]<0x0419> = [    UNDEF] <> 00 00 00 1e
+ 	[               PrintFlags]<0x03f3> = [    UNDEF] <> 00 00 00 00 00 00 00 00 ... (1 more values)
+ 	[            CopyrightFlag]<0x040a> = [    UNDEF] <> 01
+ 	[                      URL]<0x040b> = [    UNDEF] <> 77 77 77 2e 66 72 65 65 ... (8 more values)
+ 	[           PrintFlagsInfo]<0x2710> = [    UNDEF] <> 00 01 00 00 00 00 00 00 ... (2 more values)
+ 	[      ColorHalftoningInfo]<0x03f5> = [    UNDEF] <> 00 2f 66 66 00 01 00 6c ... (64 more values)
+ 	[       ColorTransferFuncs]<0x03f8> = [    UNDEF] <> 00 00 ff ff ff ff ff ff ... (104 more values)
+ 	[           GridGuidesInfo]<0x0408> = [    UNDEF] <> 00 00 00 01 00 00 02 40 ... (8 more values)
+ 	[                 URL_List]<0x041e> = [    UNDEF] <> 00 00 00 00
+ 	[                   Slices]<0x041a> = [    UNDEF] <> 00 00 00 06 00 00 00 00 ... (835 more values)
+ 	[             IDsBaseValue]<0x0414> = [    UNDEF] <> 00 00 00 01
+ 	[       ThumbnailResource2]<0x040c> = [    UNDEF] <> 00 00 00 01 00 00 00 80 ... (3682 more values)
+ 	[              VersionInfo]<0x0421> = [    UNDEF] <> 00 00 00 01 01 00 00 00 ... (77 more values)
+ 	[             JPEG_Quality]<0x0406> = [    UNDEF] <> 00 05 00 00 00 01 01
+ 	 	********** APP13 --> IPTC_RECORD_2 ********** (18 records)
+ 	 	[            RecordVersion]<0x0000> = [    ASCII] "\00\02"
+ 	 	[         Caption/Abstract]<0x0078> = [    ASCII] "Communications"
+ 	 	[            Writer/Editor]<0x007a> = [    ASCII] "sss cvbghjn"
+ 	 	[                 Headline]<0x0069> = [    ASCII] "Communications"
+ 	 	[                   ByLine]<0x0050> = [    ASCII] "Ian Pepeton"
+ 	 	[              ByLineTitle]<0x0055> = [    ASCII] "Photographer"
+ 	 	[                   Credit]<0x006e> = [    ASCII] "Ess Tomatoe"
+ 	 	[                   Source]<0x0073> = [    ASCII] "miriFoto.com"
+ 	 	[               ObjectName]<0x0005> = [    ASCII] "Communications"
+ 	 	[              DateCreated]<0x0037> = [    ASCII] "20020620"
+ 	 	[                     City]<0x005a> = [    ASCII] " "
+ 	 	[           Province/State]<0x005f> = [    ASCII] " "
+ 	 	[ Country/Prim...ationName]<0x0065> = [    ASCII] "Ubited Kingdom"
+ 	 	[                 Category]<0x000f> = [    ASCII] "BUS"
+ 	 	[     SupplementalCategory]<0x0014> = [    ASCII] "Communications"
+ 	 	[                  Urgency]<0x000a> = [    ASCII] "5"
+ 	 	[                 Keywords]<0x0019> = [    ASCII] "Communications"
+ 	 	[          CopyrightNotice]<0x0074> = [    ASCII] "xxx frixxon - TreeFoto.org"
+     15B <0xc0 SOF_0>
+ 	[          SamplePrecision]<......> = [     BYTE]  8
+ 	[            MaxLineNumber]<......> = [    SHORT]  1440
+ 	[        MaxSamplesPerLine]<......> = [    SHORT]  2160
+ 	[          ImageComponents]<......> = [     BYTE]  3
+ 	[      ComponentIdentifier]<......> = [     BYTE]  1
+ 	[          SamplingFactors]<......> = [  NIBBLES]  2 2
+ 	[    QTDestinationSelector]<......> = [     BYTE]  0
+ 	[      ComponentIdentifier]<......> = [     BYTE]  2
+ 	[          SamplingFactors]<......> = [  NIBBLES]  1 1
+ 	[    QTDestinationSelector]<......> = [     BYTE]  1
+ 	[      ComponentIdentifier]<......> = [     BYTE]  3
+ 	[          SamplingFactors]<......> = [  NIBBLES]  1 1
+ 	[    QTDestinationSelector]<......> = [     BYTE]  1
+    416B <0xc4   DHT>
+ 	[       ClassAndIdentifier]<......> = [  NIBBLES]  0 0
+ 	[              CodeLengths]<......> = [     BYTE]  0 1 5 1 1 1 1 1 ... (8 more values)
+ 	[                 CodeData]<......> = [     BYTE]  0 1 2 3 4 5 6 7 ... (4 more values)
+ 	[       ClassAndIdentifier]<......> = [  NIBBLES]  1 0
+ 	[              CodeLengths]<......> = [     BYTE]  0 2 1 3 3 2 4 3 ... (8 more values)
+ 	[                 CodeData]<......> = [     BYTE]  1 2 3 0 4 17 5 18 ... (154 more values)
+ 	[       ClassAndIdentifier]<......> = [  NIBBLES]  0 1
+ 	[              CodeLengths]<......> = [     BYTE]  0 3 1 1 1 1 1 1 ... (8 more values)
+ 	[                 CodeData]<......> = [     BYTE]  0 1 2 3 4 5 6 7 ... (4 more values)
+ 	[       ClassAndIdentifier]<......> = [  NIBBLES]  1 1
+ 	[              CodeLengths]<......> = [     BYTE]  0 2 1 2 4 4 3 4 ... (8 more values)
+ 	[                 CodeData]<......> = [     BYTE]  0 1 2 3 17 4 5 33 ... (154 more values)
+     10B <0xda   SOS>
+ 	[           ScanComponents]<......> = [     BYTE]  3
+ 	[        ComponentSelector]<......> = [     BYTE]  1
+ 	[          EntropySelector]<......> = [  NIBBLES]  0 0
+ 	[        ComponentSelector]<......> = [     BYTE]  2
+ 	[          EntropySelector]<......> = [  NIBBLES]  1 1
+ 	[        ComponentSelector]<......> = [     BYTE]  3
+ 	[          EntropySelector]<......> = [  NIBBLES]  1 1
+ 	[   SpectralSelectionStart]<......> = [     BYTE]  0
+ 	[     SpectralSelectionEnd]<......> = [     BYTE]  63
+ 	[ SuccessiveAp...tPosition]<......> = [  NIBBLES]  0 0
+ 203691B <ECS (Raw data)>
+      0B <0xd9   EOI>
