@@ -85,10 +85,12 @@ sub new {
     # (1 element). All integer types can be treated toghether, and
     # rationals can be treated as integer (halving the type length).
     my $cat = $this->get_category();
-    push @$tokens, $$dataref                                   if $cat =~/S|p/;
-    push @$tokens, $this->decode($tlength  ,$dataref, $endian) if $cat eq 'I';
-    push @$tokens, $this->decode($tlength/2,$dataref, $endian) if $cat eq 'R';
-    die "Floating point not implemented. FIX ME!"              if $cat eq 'F';
+    push @$tokens,
+        $cat =~ /S|p/ ? $$dataref :
+	$cat eq 'I' ? $this->decode_integers($tlength  , $dataref, $endian) :
+	$cat eq 'R' ? $this->decode_integers($tlength/2, $dataref, $endian) :
+	$cat eq 'F' ? $this->decode_floating($tlength  , $dataref, $endian) :
+	die "Unknown category in Record constructor";
     # die if the token list is empty
     die "Empty token list!" if @$tokens == 0;
     # return the blessed reference
@@ -116,12 +118,12 @@ sub is { return $_[1] == $_[0]{type}; }
 sub get_category { return $JPEG_RECORD_TYPE_CATEGORY[$_[0]{type}]; }
 
 ###########################################################
-# This method returns 'Y' or 'N' depending on the record  #
-# type being a signed integer or not (i.e. beign SBYTE,   #
-# SSHORT, SLONG or SRATIONAL). The method is sufficiently #
-# clear to use $_[0] instead of $this (is it a speedup ?) #
+# This method returns true or false depending on the      #
+# record type being a signed integer or not (i.e. being   #
+# SBYTE, SSHORT, SLONG or SRATIONAL). The method is       #
+# sufficiently simple to use $_[0] instead of $this.      #
 ###########################################################
-sub is_signed { return $JPEG_RECORD_TYPE_SIGN[$_[0]{type}]; }
+sub is_signed { return $JPEG_RECORD_TYPE_SIGN[$_[0]{type}] eq 'Y'; }
 
 ###########################################################
 # This method calculates a record memory footprint; it    #
@@ -140,6 +142,50 @@ sub get_size {
 	if $type < 0 || $type > $#JPEG_RECORD_TYPE_LENGTH;
     # return the type length times $count
     return $JPEG_RECORD_TYPE_LENGTH[$type] * $count;
+}
+
+###########################################################
+# This class static method receives a number of Record    #
+# features (key, type and count) and a list of values,    #
+# and tries to build a Record with that type and count    #
+# containing those values. On success, it returns the     #
+# record reference, on failure it returns undef.          #
+# ------------------------------------------------------- #
+# Floating point values are matched to six decimal digits #
+###########################################################
+sub check_consistency {
+    my ($pkg, $key, $type, $count, $tokens) = @_;
+    # create a dummy Record, the "fix" its type and its value list
+    my $record = new Image::MetaData::JPEG::Record($key, $ASCII, \ "");
+    @$record{'type', 'values'} = ($type, $tokens);
+    # try to get back the record properties; return undef if it fails
+    (undef, undef, my $new_count, my $dataref) = eval { $record->get() };
+    return undef unless defined $dataref;
+    # if $count was previously undefined, listen to the Record encoder
+    $count = $new_count unless defined $count;
+    # if counts are already different, there is no hope (this
+    # can happen if $count was faulty: we haven't used it sofar).
+    return undef if $count != $new_count;
+    # build the real record by re-parsing the data reference; in my
+    # opinion this should never fail, so I don't check the result.
+    # Does this provide more chances to find a bug?
+    $record = new Image::MetaData::JPEG::Record($key, $type, $dataref, $count);
+    # return undef if the number of values does not match
+    my $new_tokens = $record->{values};
+    return undef unless scalar @$tokens == scalar @$new_tokens;
+    # the new record can however have a value list different from
+    # what we hope, since some data types could wrap. So we now
+    # compare the value lists and return undef if they differ.
+    for (0..$#$tokens) {
+	return undef if ($record->get_category() eq 'F') ?
+	    # due to the nature of floating point values, the comparison
+	    # is limited to six decimal digits (the new token has a precision
+	    # of 23 or 52 binary digits, while the old one is just a string)
+	    sprintf("%.6g",$$new_tokens[$_]) ne sprintf("%.6g",$$tokens[$_]) :
+	    # for all other types, compare the plain values
+	    $$new_tokens[$_] ne $$tokens[$_]; }
+    # if you get here, everything is ok: return the record reference
+    return $record;
 }
 
 ###########################################################
@@ -226,7 +272,7 @@ sub set_value {
 #=========================================================#
 # Don't use shift operators, which are a bit too tricky.. #
 ###########################################################
-sub decode {
+sub decode_integers {
     my ($this, $n, $dataref, $endian) = @_;
     # safety check on endianness
     die "Unknown endianness" unless $endian =~ /$BIG_ENDIAN|$LITTLE_ENDIAN/o;
@@ -239,7 +285,7 @@ sub decode {
     # convert to 1-byte digits and concatenate them (assuming big-endian)
     @tokens = map { to_number($_) } @tokens;
     # correction for signedness.
-    @tokens = map { to_signed($_, $n) } @tokens if $this->is_signed() eq 'Y';
+    @tokens = map { to_signed($_, $n) } @tokens if $this->is_signed();
     # return the token list
     return @tokens;
 }
@@ -248,17 +294,17 @@ sub decode {
 # This method encodes the content of $this->{values} into #
 # a sequence of 8$n-bit integers, correctly taking into   #
 # account signedness and endianness. The return value is  #
-# a reference to the encoded scalar. See decode() for     #
-# further details (however here more fields can be read). #
+# a reference to the encoded scalar, ready to be written  #
+# to disk. See decode_integers() for further details.     #
 ###########################################################
-sub encode {
+sub encode_integers {
     my ($this, $n, $endian) = @_;
     # safety check on endianness
     die "Unknown endianness" if ! $endian =~ /$BIG_ENDIAN|$LITTLE_ENDIAN/o;
     # copy the value list (the original should not be touched)
     my @tokens = @{$this->{values}};
     # correction for signedness
-    @tokens = map { to_unsigned($_, $n) } @tokens if $this->is_signed() eq 'Y';
+    @tokens = map { to_unsigned($_, $n) } @tokens if $this->is_signed();
     # convert the number into 1-byte digits (assuming big-endian)
     @tokens = map { my $enc = ""; vec($enc, 0, 8*$n) = $_; $enc } @tokens;
     # reconstruct the raw token list for nibbles.
@@ -268,6 +314,56 @@ sub encode {
     @tokens = map { scalar reverse } @tokens if $endian eq $LITTLE_ENDIAN;
     # reconstruct a string from the list of raw tokens
     my $data = pack "a$n" x (scalar @tokens), @tokens;
+    # return a reference to the reconstructed string
+    return \ $data;
+}
+
+###########################################################
+# This method decodes a data area containing a sequence   #
+# of floating point values, correctly taking into account #
+# the endianness. The type size $n can therefore be only  #
+# 4, 8 or 12 (but you will not be able to store extended  #
+# precision numbers unless your system provides support   #
+# for them [a Cray?]). The data size must be validated in #
+# advance: here it must be a multiple of the type size.   #
+###########################################################
+sub decode_floating {
+    my ($this, $n, $dataref, $endian) = @_;
+    # safety check on endianness
+    die "Unknown endianness" unless $endian =~ /$BIG_ENDIAN|$LITTLE_ENDIAN/o;
+    # prepare the list of raw tokens
+    my @tokens = unpack "a$n" x (length($$dataref)/$n), $$dataref;
+    # correct the tokens for endianness if necessary (to native endianness)
+    @tokens = map { scalar reverse } @tokens if $endian ne $NATIVE_ENDIANNESS;
+    # select the correct conversion format (single/double/extended)
+    my $format = ('f', 'd', 'D')[$n/4 - 1];
+    # loop over all tokens (numbers) and extract them
+    @tokens = map { unpack $format, $_ } @tokens;
+    # return the token list
+    return @tokens;
+}
+
+###########################################################
+# This method encodes the content of $this->{values} into #
+# a sequence of floating point numbers, correctly taking  #
+# into account the endianness. The returned value is a    #
+# reference to the encoded scalar, ready to be written to #
+# disk. See decode_floating() for further details.        #
+###########################################################
+sub encode_floating {
+    my ($this, $n, $endian) = @_;
+    # safety check on endianness
+    die "Unknown endianness" unless $endian =~ /$BIG_ENDIAN|$LITTLE_ENDIAN/o;
+    # get a simpler reference to the value list
+    my @tokens = @{$this->{values}};
+    # select the correct conversion format (single/double/extended)
+    my $format = ('f', 'd', 'D')[$n/4 - 1];
+    # loop over all tokens (floating point numbers)
+    @tokens = map { pack $format, $_ } @tokens;
+    # correct the tokens for endianness if necessary (from native endianness)
+    @tokens = map { scalar reverse } @tokens if $endian ne $NATIVE_ENDIANNESS;
+    # reconstruct a string from the list of raw tokens
+    my $data = join '', @tokens;
     # return a reference to the reconstructed string
     return \ $data;
 }
@@ -285,28 +381,68 @@ sub get {
     my ($this, $endian) = @_;
     # use big endian as default endianness
     $endian = $BIG_ENDIAN unless defined $endian;
-    # get the record key, its type and a reference
-    # to the internal value list
-    my $key    = $this->{key};
-    my $type   = $this->{type};
-    my $tokens = $this->{values};
+    # get the record type and a reference to the internal value list
+    my $type     = $this->{type};
+    my $tokens   = $this->{values};
+    my $category = $this->get_category();
     # read the type length (only used for integers and rationals)
-    my $tlength = $JPEG_RECORD_TYPE_LENGTH[$type];
+    my $tlength  = $JPEG_RECORD_TYPE_LENGTH[$type];
     # References, strings and undefined data contain a single value
     # (to be taken a reference at). All integer types can be treated
     # toghether, and rationals can be treated as integer (halving the
     # type length). Floating points still to be coded.
-    my $cat  = $this->get_category(); my $dataref = undef;
-    $dataref = \ $$tokens[0]                      if $cat =~/S|p/;
-    $dataref = $this->encode($tlength  , $endian) if $cat eq 'I';
-    $dataref = $this->encode($tlength/2, $endian) if $cat eq 'R';
-    die "Floating point not implemented. FIX ME!" if $cat eq 'F';
+    my $dataref =
+	$category =~ /S|p/ ? \ $$tokens[0] :
+	$category eq 'I' ? $this->encode_integers($tlength  , $endian) :
+	$category eq 'R' ? $this->encode_integers($tlength/2, $endian) :
+	$category eq 'F' ? $this->encode_floating($tlength  , $endian) :
+	die "Unknown category in Record get() method";
     # calculate the "count" (the number of elements for numeric types
     # and the length of $$dataref for references, strings, undefined)
-    my $count = ($cat =~ /S|p/) ?
-	length($$dataref) : (length($$dataref) / $tlength);
+    my $count = length($$dataref) / ( $category =~ /S|p/ ? 1 : $tlength );
     # return the result, depending on the context
-    wantarray ? ($key, $type, $count, $dataref) : $$dataref;
+    wantarray ? ($this->{key}, $type, $count, $dataref) : $$dataref;
+}
+
+###########################################################
+# This routine reworks $ASCII and $UNDEF record values    #
+# before displaying them. In particular, unreasonably     #
+# long strings are trimmed and non-printing characters    #
+# are replaced with their hexadecimal representation.     #
+# Strings are then enclosed between delimiters, and null- #
+# terminated ones can have their last character chopped   #
+# off (but a dot is added after the closing delimiter).   #
+# Remember to copy the string to avoid side-effects!      #
+# ------------------------------------------------------- #
+# $_[0] --> this contains the string to be modified.      #
+# $_[1] --> this contains the string delimiter (" or ')   #
+# $_[2] --> true if the last null char is to be replaced  #
+###########################################################
+sub string_manipulator {
+    # max length of the part of the string we want to display
+    # (after conversion of non-printing chars to hex repr.)
+    my $maxlen = 40;
+    # running variables
+    my ($left, $string) = (length $_[0], '');
+    my ($delim, $dropnull) = @_[1,2];
+    # loop over all characters in the string
+    for (0..(length($_[0])-1)) {
+	# get a copy of the current character
+	my $token = substr($_[0], $_, 1);
+	# translate it to a string if it is non-printing
+	$token =~ s/[\000-\037\177-\377]/sprintf "\\%02x",ord($&)/e;
+	# stop here if the overall string becomes too long
+	last if length($token) + length($string) > $maxlen;
+	# update running variables
+	--$left; $string .= $token; }
+    # transform the terminating null character into a dot if the
+    # string does not start with a slash, then put delimiters
+    # around the string (the dot remains outside, however).
+    $string = "${delim}$string${delim}";
+    $string =~ s/^(.*)\\00${delim}$/$1${delim}\./ if $dropnull;
+    # print the reworked string in a fixed length field;
+    # if the string was shortened, add a notice to the end.
+    sprintf('%-'.(3+$maxlen).'s%s', $string, ($left?"($left more chars)":''))
 }
 
 ###########################################################
@@ -319,7 +455,9 @@ sub get {
 sub get_description {
     my ($this, $names) = @_;
     # some internal parameters
-    my $maxlen = 25; my $string_reflen = 40; my $max_tokens = 7;
+    my $maxlen = 25; my $max_tokens = 7;
+    # try not to die every time if $names is undefined ...
+    $names = [] unless defined $names;
     # assume that the key is a string (so, it is its own
     # description, and no numeric value is to be shown)
     my $descriptor = $this->{key};
@@ -334,8 +472,7 @@ sub get_description {
 	# in the hash for this key, replace the descriptor 
 	# with a sort of error message.
 	$descriptor = exists $$section_hash{$descriptor} ?
-	    $$section_hash{$descriptor} : "?? Unknown record type ??";
-    }
+	    $$section_hash{$descriptor} : "?? Unknown record type ??"; }
     # calculate an appropriate tabbing
     my $tabbing = " \t" x (scalar @$names);
     # prepare the description (don't make it exceed $maxlen characters)
@@ -351,27 +488,15 @@ sub get_description {
     $description .= sprintf " = [%9s] ", $JPEG_RECORD_TYPE_NAME[$this->{type}];
     # show the "extra" field if present
     $description .= "<$this->{extra}>" if defined $this->{extra};
-    # prepare the list of objects to process; if we are dealing
-    # with the undefined type, split the string into single bytes;
+    # take a reference to the list of objects to process
     my $tokens = $this->{values};
-    $tokens = [ unpack "a1" x length($$tokens[0]), $$tokens[0] ] 
-	if $this->is($UNDEF);
     # we want to write at most $max_tokens tokens in the value list
     my $extra = $#$tokens - $max_tokens;
     my $token_limit = $extra > 0 ? $max_tokens : $#$tokens;
-    # This routine reworks ASCII strings a bit before displaying them.
-    # In particular it trims unreasonably long strings and replaces
-    # non-printing characters with their hexadecimal representation. Note,
-    # however, that "more characters" counts each control char as three.
-    # Also, null-terminated strings have the null character chopped off,
-    # but a '.' is written after the closing '"'. Remember to copy the
-    # string to avoid side-effects!
-    my $tt = sub { 
-	my $ss = $_[0]; my $nt = ($ss =~ s/(.*)\000$/$1/) ? '.' : '';
-	$ss =~ s/([\000-\037\177-\377])/sprintf "\\%02x",ord($1)/ge;
-	my $rr = length($ss) - $string_reflen;
-	($rr <= 24) ? "\"$ss\"$nt" : sprintf "\"%s\"%s (+ %5d more chars)",
-	substr($ss,0,$string_reflen), $nt, $rr; };
+    # some auxiliary variables (depending only on the record type)
+    my $intfs = $this->is_signed() ? '%d' : '%u';
+    my $sep   = $this->is($ASCII)  ? '"'  : "'" ;
+    my $text  = sub { string_manipulator($_[0], $sep, $this->is($ASCII)) };
     # integers, strings and floating points are written in sequence;
     # rationals must be written in pairs (use a flip-flop);
     # undefined values are written on a byte per byte basis.
@@ -379,15 +504,16 @@ sub get_description {
     foreach (@$tokens[0..$token_limit]) {
 	# update the flip flop
 	$f = $f eq ' ' ? '/' : ' ';
-	# show something, depending on category and type
+	# some auxiliary variables
 	my $category = $this->get_category();
-	$description .= sprintf " --> %p", $_    if $category eq 'p';
-	$description .= sprintf " %02x", ord($_) if $this->is($UNDEF);
-	$description .= sprintf "%s", &$tt($_)   if $this->is($ASCII);
-	$description .= sprintf " %d", $_        if $category eq 'I';
-	$description .= sprintf " %f", $_        if $category eq 'F';
-	$description .= sprintf "%s%d", $f,$_    if $category eq 'R';
-    }
+	# show something, depending on category and type
+	$description .= 
+	    $category eq 'p' ? sprintf ' --> %p'  , $_         :
+	    $category eq 'S' ? sprintf '%s'       , &$text($_) :
+	    $category eq 'I' ? sprintf ' '.$intfs , $_         :
+	    $category eq 'F' ? sprintf ' %g'      , $_         :
+	    $category eq 'R' ? sprintf '%s'.$intfs, $f, $_     :
+	    die "Unknown error condition"; }
     # terminate the line; remember to put a warning note if there were
     # more than $max_tokens element to display, then return the description
     $description .= " ... ($extra more values)" if $extra > 0;

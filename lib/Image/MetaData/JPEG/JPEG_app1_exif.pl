@@ -54,30 +54,32 @@ sub provide_app1_Exif_segment {
     # and initialised (contrary to the IPTC case, an existing APP1
     # segment, presumably XPM, cannot be "adapted"). We write here
     # a minimal Exif segment with no data at all (in big endian).
+    # (remember about the new 'parental' link in the Segment ctor).
     my $minimal_exif = $APP1_EXIF_TAG . $BIG_ENDIAN
 	. pack "nNnN", $APP1_TIFF_SIG, 8, 0, 0;
-    my $Exif = new Image::MetaData::JPEG::Segment('APP1', \ $minimal_exif);
+    my $Exif = new Image::MetaData::JPEG::Segment
+	($this, 'APP1', \ $minimal_exif);
     # choose a position for the new segment. I don't want to use
     # the standard routine for this, because the APP1 segment 
     # should be at the beginning. So, I put it in position 1
     # (or 2 if this is occupied by an APP0 segment).
     my @app0s = $this->get_segments('APP0$', "INDEXES");
     my $position = (@app0s && $app0s[0] == 1) ? 2 : 1;
-    # get the list of segments in the file
-    my $segments = $this->{segments};
-    # actually insert the segment, then call the update method
-    splice @$segments, $position, 0, $Exif;
+    # actually insert the segment
+    $this->insert_segments($Exif, $position);
     # return a reference to the new segment
     return $Exif;
 }
 
 ###########################################################
 # This method eliminates the $index-th Exif APP1 segment  #
-# from the JPEG file segment list. If $index is (-1), all #
-# Exif APP1 segments are affected at once.                #
+# from the JPEG file segment list. If $index is (-1) or   #
+# undef, all Exif APP1 segments are affected at once.     #
 ###########################################################
 sub remove_app1_Exif_info {
     my ($this, $index) = @_;
+    # the default value for $index is -1
+    $index = -1 unless defined $index;
     # this is the list of segments to be purged (initially empty)
     my %deleteme = ();
     # call the selection routine and save the segment reference
@@ -90,62 +92,27 @@ sub remove_app1_Exif_info {
     if ($index == -1) { $this->retrieve_app1_Exif_segment($_)
 			    ->{name} = "deleteme" for 0..($segment-1); }
     # remove marked segments from the file
-    my $segments = $this->{segments};
-    @$segments = grep { $_->{name} ne "deleteme" } @$segments;
+    $this->drop_segments('deleteme');
 }
 
 ###########################################################
-# This method is a generalisation of the method with the  #
-# same name in the Segment class. First, all Exif APP1    #
-# segment are retrieved (if none is present, undefined is #
-# returned). Then, get_Exif_data is called on each of     #
-# these segments, passing the arguments through. The      #
-# results are then merged in a single structure.          #
+# This method is an interface to the method with the same #
+# name in the Segment class. First, the first Exif APP1   #
+# segment is retrieved (if there is no such segment, the  #
+# undefined value is returned). Then the get_Exif_data is #
+# called on this segment passing the arguments through.   #
 # For further details, see Segment::get_Exif_data() and   #
 # JPEG::retrieve_app1_Exif_segment().                     #
-# ------------------------------------------------------- #
-# This method takes into account the different formats    #
-# returned by the lower level get_Exif_data.              #
 ###########################################################
 sub get_Exif_data {
     my $this = shift;
-    # get the number of interesting segments
-    my $number = $this->retrieve_app1_Exif_segment(-1);
-    # return undef if no APP1 Exif segment is present
-    return undef if $number == 0;
-    # get references to all Exif APP1 segments and call
-    # get_Exif_data on each segment, do not store failed
-    # attempts, e.g. if @_ is invalid.
-    my @segment_results = grep { defined $_ }  
-    map { $_->get_Exif_data(@_) }
-    map { $this->retrieve_app1_Exif_segment($_) } (0..$number-1);
-    # return undef if there are no results ...
-    return undef unless @segment_results;
-    # declare the object to be returned and initialise it with
-    # the first object found in @segment_results
-    my $result = shift @segment_results;
-    # merge in all the rest
-    for (@segment_results) {
-	# scalar values are simply concatenated ...
-	unless (ref $_) { $result .= $_; next; }
-	# (references to) arrays are appended ...
-	if (ref $_ eq 'ARRAY') { push @$result, @$_; next; }
-	# if we are still here it is a hash reference; if it points
-	# to a flat hash (values are scalars) then we merge with slices
-	unless (ref ((values %$_)[0])) {$$result{keys %$_} = values %$_; next;}
-	# if we are still here, it is a diabolic two level hash
-	while (my ($dir, $hashref) = each %$_) {
-	    # create a hash if $dir is new
-	    $$result{$dir} = {} unless exists $$result{$dir};
-	    # push new data related to this $dir
-	    while (my ($tag, $arrayref) = each %$hashref) {
-		# create an array if $tag is new
-		$$result{$dir}{$tag} = [] unless exists $$result{$dir}{$tag};
-		# push new data related to this $tag
-		my $global_arrayref = $$result{$dir}{$tag};
-		push @$global_arrayref, @$arrayref; } } }
-    # return the translated content of the segments
-    return $result;
+    # get the first Exif APP1 segment in the current JPEG
+    # file (if no such segment exists, this returns undef).
+    my $segment = $this->retrieve_app1_Exif_segment();
+    # return undef if not suitable segment exists
+    return undef unless defined $segment;
+    # pass the arguments through to the Segment method
+    return $segment->get_Exif_data(@_);
 }
 
 ###########################################################
@@ -168,10 +135,44 @@ sub set_Exif_data {
 }
 
 ###########################################################
+# An Interoperability subIFD is supposed to be used for,  #
+# well, inter-operability, so it should be made as stan-  #
+# dard as possible. This method takes care to chose a set #
+# of "correct" values for you: the Index is set to "R98"  #
+# (because we are interested in IFD0), Version to 1.0,    #
+# FileFormat to Exif v.2.2, and the picture dimensions    #
+# are taken from get_dimensions().                        #
+###########################################################
+sub forge_interoperability_IFD {
+    my $this = shift;
+    # get the real picture dimensions
+    my ($x_dim, $y_dim) = $this->get_dimensions();
+    # prepare a table of records for the Interop. IFD
+    my $std_values = {
+	'InteroperabilityIndex'   => "R98",
+	'InteroperabilityVersion' => "0100",
+	'RelatedImageFileFormat', => "Exif JPEG Ver. 2.2",
+	'RelatedImageWidth'       => $x_dim,
+	'RelatedImageLength'      => $y_dim, };
+    # call the setter method for Exif data appropriately
+    return $this->set_Exif_data($std_values, 'INTEROP_DATA', 'REPLACE');
+}
+
+###########################################################
 # The following routines best fit as Segment methods.     #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
 use Image::MetaData::JPEG::Tables qw(:Lookups);
+
+###########################################################
+# A private hash for get_Exif_data and set_Exif_data.     #
+###########################################################
+my %WHAT2IFD = ('ROOT_DATA'    => 'APP1',
+		'IFD0_DATA'    => 'APP1@IFD0',
+		'SUBIFD_DATA'  => 'APP1@IFD0@SubIFD',
+		'GPS_DATA'     => 'APP1@IFD0@GPS',
+		'INTEROP_DATA' => 'APP1@IFD0@SubIFD@Interop',
+		'IFD1_DATA'    => 'APP1@IFD1' );
 
 ###########################################################
 # This method inspects a segments, and returns "undef" if #
@@ -182,54 +183,18 @@ sub is_app1_Exif {
     my ($this) = @_;
     # return undef if this segment is not APP1
     return undef unless $this->{name} eq 'APP1';
-    # return undef if there is no 'Identifier' in this segment
-    return undef unless $this->search_record('Identifier');
-    # return undef if it is not Exif like
-    my $identifier = $this->search_record('Identifier')->get_value();
-    return undef unless $identifier && $identifier eq $APP1_EXIF_TAG;
+    # return undef if there is no 'Identifier' in this segment 
+    # or if it does not match with an Exif-like segment
+    my $identifier = $this->search_record_value('Identifier');
+    return undef unless defined $identifier && $identifier eq $APP1_EXIF_TAG;
     # return ok
     return "ok";
 }
 
 ###########################################################
-# This method returns a reference to a hash containing    #
-# the "names" and references of the IFD directories or    #
-# subdirectories currently present in the APP1 segment,   #
-# including a special root directory containing some tags #
-# and the links to IFD0 and IFD1. So, the hash has always #
-# at least one entry; the routine can "fail" (returning   #
-# undef) only if the segment is not an Exif APP1 segment. #
-# The only argument is the name of the root directory.    #
-###########################################################
-sub retrieve_Exif_subdirectories {
-    my ($this, $rootname) = @_;
-    # return immediately if this is not an Exif APP1 segment
-    return undef unless $this->is_app1_Exif();
-    # This seemingly complicated private function takes two
-    # arguments, an array reference ($_[0]) and a string ($_[1]).
-    # The array reference must contain Record objects; Records
-    # of type $REFERENCE are singled out and postprocessed.
-    # Postprocessing implies returning a hash entry with the
-    # key built out of the passed string and the Record key,
-    # and the value copied from the Record value, followed by
-    # all hash entries built in this way after inspection of
-    # the subdirectory pointed to by the Record
-    sub get_subdirs {
-	map { $_[1]."@".$_->{key} => $_->get_value(),
-	      get_subdirs($_->get_value(), $_[1]."@".$_->{key}) }
-	grep { $_->{type} == $REFERENCE } @{$_[0]}; }
-    # the return hash is filled with (key,value) pairs where "key" is
-    # the name of an IFD directory or subdirectory (including a special
-    # "ROOT" directory containing some tags and the links to IFD0 and
-    # IFD1) and "value" is an array reference linking to the dir.
-    return { $rootname => $this->{records},
-	     get_subdirs($this->{records}, $rootname) };
-}
-
-###########################################################
 # This method accepts two arguments ($what and $type) and #
-# returns the content of the APP1 segment packed in vari- #
-# ous formats. All Exif records are natively identified   #
+# returns the content of the Exif APP1 segment packed in  #
+# various forms. All Exif records are natively identified #
 # by numeric tags (keys), which can be "translated" into  #
 # a human-readable form by using the Exif standard docs;  #
 # only a few fields in the Exif APP1 preamble (they are   #
@@ -243,27 +208,35 @@ sub retrieve_Exif_subdirectories {
 # created with "Unknown_tag_" followed by the numerical   #
 # value (this solves problems with non-standard tags).    #
 # ------------------------------------------------------- #
+# Error conditions (invalid $what's and $type's) manifest #
+# themselves through an undefined return value. So, undef #
+# should not be used for other cases: use empty hashes or #
+# a reference to an empty string for the thumbnail.       #
+# ------------------------------------------------------- #
 # The subset of Exif tags returned by this method is      #
-# determined by the value of $what, which can be one of:  #
-# 'ALL'(default), 'IMAGE_DATA', 'THUMB_DATA', 'GPS_DATA', #
-# 'INTEROP_DATA' or 'THUMBNAIL'. Setting $what equal to   #
-# 'ALL' returns a data dump very close to the Exif APP1   #
-# segment structure; the returned value is a reference to #
-# a hash of hashes: each element of the root-level hash   #
-# is a pair ($name, $hashref), where $hashref points to a #
-# second-level hash containing a copy of all Exif records #
-# present in the $name IFD (sub)directory. The root-level #
-# hash includes a special root directory (named 'APP1')   #
-# containing some non Exif parameters.                    #
-# Setting $what equal to '*_DATA' returns a reference to  #
-# a flat hash, corresponding to one or more IFD (sub)dirs:#
-#  - IMAGE_DATA     IFD0 + IFD0@SubIFD  (primary image)   #
-#  - THUMB_DATA     IFD1                (thumbnail image) #
-#  - GPS_DATA       IFD0@GPS            (GPS data)        #
-#  - INTEROP_DATA   IFD0@SubIFD@Interop (interoperabilty) #
-# Last, setting $what to 'THUMBNAIL' returns a reference  #
-# to a copy of the actual Exif thumbnail image (this is   #
-# not included in the set returned by 'THUMB_DATA').      #
+# determined by the value of $what. If $what is set equal #
+# to '*_DATA', this method returns a reference to a flat  #
+# hash, corresponding to one or more IFD (sub)dirs:       #
+#  - ROOT_DATA      APP1(TIFF header records and similar) #
+#  - IFD0_DATA      APP1@IFD0   (primary image TIFF tags) #
+#  - SUBIFD_DATA    APP1@IFD0@SubIFD (Exif private tags)  #
+#  - GPS_DATA       APP1@IFD0@GPS    (GPS data in IFD0)   #
+#  - INTEROP_DATA   APP1@IFD0@SubIFD@Interop(erability)   #  
+#  - IFD1_DATA      APP1@IFD1   (thumbnail TIFF tags)     #
+#  - IMAGE_DATA     a merge of IFD0_DATA and SUBIFD_DATA  #
+#  - THUMB_DATA     an alias for IFD1_DATA                #
+# Setting $what equal to 'ALL' returns a data dump very   #
+# close to the Exif APP1 segment structure; the returned  #
+# value is a reference to a hash of hashes: each element  #
+# of the root-level hash is a pair ($name, $hashref),     #
+# where $hashref points to a second-level hash containing #
+# a copy of all Exif records present in the $name IFD     #
+# (sub)directory. The root-level hash includes a special  #
+# root directory (named 'APP1') containing some non Exif  #
+# parameters. Last, setting $what to 'THUMBNAIL' returns  #
+# a reference to a copy of the actual Exif thumbnail      #
+# image (not returned by 'THUMB_DATA'), if present, or a  #
+# reference to an empty string, if not present.           #
 # ------------------------------------------------------- #
 # Note that the Exif record values' format is not checked #
 # to be valid according to the Exif standard. This is, in #
@@ -274,361 +247,434 @@ sub get_Exif_data {
     my ($this, $what, $type) = @_;
     # refuse to work unless you are an Exif APP1 segment
     return undef unless $this->is_app1_Exif();
-    # the name of the root Exif directory (see later)
-    my $rootname = "APP1";
-    # set the default section and type, if undefined
-    $what = 'ALL'     unless defined $what;
-    $type = 'TEXTUAL' unless defined $type;
+    # set the default section and type, if undefined;
+    $what = 'ALL'       unless defined $what;
+    $type = 'TEXTUAL'   unless defined $type;
+    # reject unknown types (return undef, which means 'error')
+    return undef unless $type =~ /^NUMERIC$|^TEXTUAL$/;
+    # a reference to the hash to be returned, initially empty
+    my $pairs = {};
+    # ========= SPECIAL CASES ====================================
+    # IMAGE_DATA means IFD0_DATA and SUBIFD_DATA (merged)
+    if ($what eq 'IMAGE_DATA') {
+	for ('IFD0_DATA', 'SUBIFD_DATA') {
+	    my $h = $this->get_Exif_data($_, $type);
+	    @$pairs{keys %$h} = values %$h; } return $pairs; }
+    # ALL means a hash of hashes with all subdirs (even if emtpy)
+    if ($what eq 'ALL') {
+	$$pairs{$WHAT2IFD{$_}} = $this->get_Exif_data($_, $type)
+	    for keys %WHAT2IFD; return $pairs; }
     # $what equal to 'THUMBNAIL' is special: it returns a copy of the
     # thumbnail data area (this can be a self-contained JPEG picture
-    # or an uncompressed picture needing more parameters from IFD1)
+    # or an uncompressed picture needing more parameters from IFD1).
+    # If no thumbnail is there, return a reference to an empty string
     if ($what eq 'THUMBNAIL') {
-	my $trec = $this->search_record('ThumbnailData');
-	return $trec ? \ $trec->get_value() : undef; }
-    # reject unknown sections and types ('THUMBNAIL' already dealt with)
-    return undef unless $type =~ /^NUMERIC$|^TEXTUAL$/ &&
-	$what =~ /ALL|(IMAGE|THUMB|GPS|INTEROP)_DATA/;	
-    # create a hash filled with (key, ref) pairs where "key" is the name
-    # of an IFD directory or subdirectory (including a special root
-    # directory containing some tags and the links to IFD0 and IFD1) and
-    # "ref" is an array reference linking to the dir.
-    my $IFD_refs = $this->retrieve_Exif_subdirectories($rootname);
-    # This hash defines which IFD (sub)directories are relevant by
-    # means of regexps (the keys must correspond to the legal $what's).
-    my %regexps = ( 'ALL'          => $rootname . '.*',
-		    'IMAGE_DATA'   => $rootname . '@IFD0(|@SubIFD)',
-		    'GPS_DATA'     => $rootname . '@IFD0@GPS',
-		    'INTEROP_DATA' => $rootname . '@IFD0@SubIFD@Interop',
-		    'THUMB_DATA'   => $rootname . '@IFD1' );
-    # create a hash filled with (key, ref) pairs where "key" is the name
-    # of an IFD directory or subdirectory, as before, compatible with $what,
-    # and "ref" is a reference to a hash containing the tag/value pairs of
-    # that subdirectory (not including the REFERENCE records, of course!).
-    my $IFD_dirs = {};
-    while (my ($dir, $rec_ref) = each %$IFD_refs) {
-	# forget about subdirectories not selected by $what;
-	next unless $dir =~ /^$regexps{$what}$/;
-	# map the record list reference to a full hash containing
-	# the subdirectory records as (tag => values) pairs.
-	my %pairs = map { $_->{key} => $_->{values} }
-	            grep { $_->{type} != $REFERENCE } @$rec_ref;
-	$$IFD_dirs{$dir} = \ %pairs; }
+	my $thumbnail = $this->search_record_value('ThumbnailData');
+	return $thumbnail ? \ $thumbnail : \ (my $ns = ''); }
+    # IFD1_DATA is an alias for THUMB_DATA
+    $what = 'IFD1_DATA' if $what eq 'THUMB_DATA';
+    # ============================================================
+    # %WHAT2IFD keys must correspond to the legal $what's. It is now
+    # time to reject unknown sections ('THUMBNAIL' already dealt with).
+    # As usual, this error condition corresponds to returning undef.
+    return undef unless exists $WHAT2IFD{$what};
+    # $path contains a '@' separated list of dir names; use it
+    # to retrieve a reference to the appropriate record list
+    my $path = $WHAT2IFD{$what};
+    # search_record works without the initial part (i.e., APP1@ ...)
+    my $dirnames = $path; $dirnames =~ s/^($this->{name}@?)(.*)$/$2/;
+    # follow the path blindly, get undef on problems
+    my $dirref = $path eq $this->{name} ? $this->{records} :
+	$this->search_record_value($dirnames);
+    # if $dirref is undefined, the corresponding subdirectory was not
+    # present, and we are going to return a reference to an empty hash
+    return $pairs unless $dirref;
+    # map the record list reference to a full hash containing the subdir-
+    # ectory records as (tag => values) pairs. Do not include $REFERENCE's
+    # (private). Make COPIES of the array references found in $_->{values}
+    # (the caller could use them to corrupt the internal structures).
+    %$pairs = map  { $_->{key} => [ @{$_->{values}} ] }
+              grep { $_->{type} != $REFERENCE } @$dirref;
     # up to now, all record keys (tags) are numeric (exception made
-    # for keys in the "ROOT" directory, for which there is no numeric
+    # for keys in the "root" directory, for which there is no numeric
     # counterpart). If $type is 'TEXTUAL', they must be translated.
-    if ($type eq "TEXTUAL") {
-	while (my ($name, $ref) = each %$IFD_dirs) {
-	    # entries in the root directory are only textual
-	    next if $name eq $rootname;
-	    # select the appropriate numeric-to-textual
-	    # conversion table by looking at the $name
-	    my $table = JPEG_lookup(split /@/, $name);
-	    # run the translation (create a name also for unkwnon tags)
-	    %$ref = map { (exists $$table{$_} ? $$table{$_} :
-			   "Unknown_tag_$_") => $$ref{$_} } keys %$ref; }}
-    # if $what is not 'ALL', the final hash must be flattened, because this
-    # is simpler for the end user. If $what is 'ALL', one cannot do this
-    # because there might be repeated or homonymous tags.
-    if ($what ne 'ALL') { my %flat = ();
-			  @flat{keys %$_} = values %$_ for values %$IFD_dirs;
-			  $IFD_dirs = \ %flat; }
+    if ($type eq "TEXTUAL" && $path ne $this->{name}) {
+	# select the appropriate numeric-to-textual
+	# conversion table by looking at the $path
+	my $table = JPEG_lookup($path);
+	# run the translation (create a name also for unknown tags)
+	%$pairs = map { (exists $$table{$_} ? $$table{$_} :
+			 "Unknown_tag_$_") => $$pairs{$_} } keys %$pairs; }
     # return the reference to the hash containing all data
-    return $IFD_dirs;
+    return $pairs;
 }
 
 ###########################################################
 # This method is the entry point for setting Exif data in #
-# the current APP1 segment. It makes some basic checks on #
-# the arguments, then calls a specific routine from its   #
-# pool (read there for further details). The arguments    #
-# are: $data (a hash reference, with new records to be    #
-# written), $what (a scalar, selecting the concerned por- #
-# tion of the Exif APP1 segment) and $action (a scalar    #
-# specifying the requested action). Valid values are:     #
-#    $what   --> GPS_DATA | .... to be finished           #
-#    $action --> ADD | REPLACE                            #
+# the current APP1 segment. The mandatory arguments are:  #
+# $data (hash reference, with new records to be written), #
+# $what (a scalar, selecting the concerned portion of the #
+# Exif APP1 segment) and $action (a scalar specifying the #
+# requested action). Valid values are:                    #
+#   $action --> ADD | REPLACE                             #
+#   $what --> IFD0_DATA, IFD1_DATA, INTEROP_DATA,         #
+#             GPS_DATA, SUBIFD_DATA (see get_Exif_data)   #
+#             THUMB_DATA (an alias for IFD1_DATA)         #
+#             IMAGE_DATA (IFD0_DATA or SUBIFD_DATA)       #
+#             ROOT_DATA  (only 'Endianness' can be set)   #
+#          .- THUMBNAIL  (including automatic fields)     #
+#          \____.--> $data is a scalar reference here ... #
 # The behaviour of $action is similar to that for IPTC    #
-# data. The only checks performed here are: the segment   #
-# must be of the appropriate type, $data must be a hash   #
-# reference, $action and $what must be valid. Moreover,   #
-# this method sets the default ($action == 'REPLACE').    #
+# data. Note that Exif records are non-repeatable in      #
+# nature, so there is no need for an 'UPDATE' action in   #
+# addition to 'ADD' (they would both overwrite an old re- #
+# cord with the same tag as a new record); $action equal  #
+# to 'REPLACE', on the other hand, clears the appropriate #
+# record list(s) before the insertions. Records are       #
+# rewritten in increasing (numerical) tag order.          #
+# The elements of $data which can be converted to valid   #
+# records are inserted in the appropriate (sub)IFD, the   #
+# others are returned. The return value is always a hash  #
+# reference; in general it contains rejected records. If  #
+# an error occurs in a very early stage of the setter,    #
+# this reference contains a single entry with key='ERROR' #
+# and value set to some meaningful error message. So, a   #
+# reference to an empty hash means that everything was OK.#
 # ------------------------------------------------------- #
-# The return value is always a hash reference; in general #
-# it contains rejected records. If an error occurs in a   #
-# very early stage of the setter, this reference contains #
-# a single entry with key='ERROR' and value set to some   #
-# meaningful error message. So, a reference to an empty   #
-# hash means that everything was OK.                      #
+# $what equal to 'THUMBNAIL' is meant to replace the IFD1 #
+# thumbnail. $data should be a reference to a scalar      #
+# containing the new thumbnail; if it points to an emtpy  #
+# string, the thumbnail is erased. Corresponding fields   #
+# follow the thumbnail (all this is dealt with by a       #
+# special private method). $data undefined DOES NOT erase #
+# the thumbnail, it is an error (too dangerous).          #
+# ------------------------------------------------------- #
+# First, some basic argument checking is performed: the   #
+# segment must be of the appropriate type, $data must be  #
+# a hash reference, $action and $what must be valid.      #
+# Then, the appropriate record (sub)directory is created  #
+# (this can trigger the creation of other directories),   #
+# if it is not present. Then records are screened and     #
+# set. Mandatory data are added, if not present, at the   #
+# end of the process (see Tables.pm for this). Note that  #
+# there are some record intercorrelations still neglected.#
 ###########################################################
 sub set_Exif_data {
     my ($this, $data, $what, $action) = @_;
     # refuse to work unless you are an Exif APP1 segment
     return {'ERROR'=>'Not an Exif APP1 segment'} unless $this->is_app1_Exif();
-    # return immediately if $data is undefined
-    return {'ERROR'=>'Undefined data reference'} unless defined $data;
-    # $data must be a hash reference
-    return {'ERROR'=>'\$data not a hash reference'} unless ref $data eq 'HASH';
     # set the default action, if undefined
     $action = 'REPLACE' unless defined $action;
     # refuse to work for unkwnon actions
     return {'ERROR'=>"Unknown action $action"} unless $action =~ /ADD|REPLACE/;
-    # call the appropriate specialiased method
-    return $this->set_Exif_data_GPS_DATA($data,$action) if $what eq 'GPS_DATA';
-    # fallback: complain about undefined sections
-    return {'ERROR'=>"Unknown section $what"};
+    # return immediately if $data is undefined
+    return {'ERROR'=>'Undefined data reference'} unless defined $data;
+    # ========= SPECIAL CASES ====================================
+    # IMAGE_DATA means IFD0_DATA and SUBIFD_DATA (merged); we first try
+    # to insert all tags into IFD0, then we try to insert rejected data
+    # into SubIFD, last we return doubly rejected data.
+    if ($what eq 'IMAGE_DATA') {
+	my $rejected = $this->set_Exif_data($data, 'IFD0_DATA', $action);
+	return $this->set_Exif_data($rejected, 'SUBIFD_DATA', $action); }
+    # THUMBNAIL requires a very specific treatment
+    return $this->set_Exif_thumbnail($data) if $what eq 'THUMBNAIL';
+    # 'THUMB_DATA' is an alias to 'IFD1_DATA'
+    $what = 'IFD1_DATA' if $what eq 'THUMB_DATA';
+    # ============================================================
+    # $data must be a hash reference (from this point on)
+    return {'ERROR'=>'$data not a hash reference'} unless ref $data eq 'HASH';
+    # return with an error if $what is not a valid key in %WHAT2IFD
+    return {'ERROR'=>"Unknown section $what"} unless exists $WHAT2IFD{$what};
+    # translate $what into a path specification
+    my $path = $WHAT2IFD{$what};
+    # the mandatory records list must be present (debug point)
+    return {'ERROR'=>'no $mandatory records'} unless exists
+	$IFD_SUBDIRS{$path}{'__mandatory'};
+    # get the mandatory record list
+    my $mandatory = $IFD_SUBDIRS{$path}{'__mandatory'};
+    # all arguments look healty, go to stage two; get the record list
+    # of the appropriate (sub)directory; this call creates the supporting
+    # directory tree if necessary, taking care of gory details.
+    my $record_list = $this->build_IFD_directory_tree($path);
+    # analyse the passed records for correctness (syntactical rules);
+    # the following function divides them into two obvious categories
+    my ($rejected, $accepted) = $this->screen_records($data, $path);
+    # For $action equal to 'ADD', we read the old records and insert
+    # them in the $accepted hash, unless they are already present.
+    # If $action is 'REPLACE' we completely forget about the past.
+    complement_records($record_list, $accepted) if $action eq 'ADD';
+    # retrieve the section about mandatory values for this $path and transform
+    # them into Records (there is also a syntactical analysis, but all records
+    # should be accepted here, so I take the return value in scalar context).
+    # ('B' is currently necessary for stupid root-level mandatory records)
+    my ($notempty, $values) = $this->screen_records($mandatory, $path, 'B');
+    die "Internal error (mandatory values rejected)" if %$notempty;
+    # merge in mandatory records, if they are not already present
+    complement_records($values, $accepted);
+    # take all records from $accepted and set them into the record
+    # list (their order must anambiguous, so perform a clever sorting).
+    @$record_list = ordered_record_list($accepted, $path);
+    # remember to commit these changes to the data area
+    $this->update();
+    # that's it, return the reference to the rejected data hash
+    return $rejected;
 }
 
 ###########################################################
-# This method is the specialised setter for GPS data. It  #
-# takes a hash reference $data and an action $action. The #
-# elements of $data which can be converted to valid GPS   #
-# records are inserted in the GPS subIFD, the others are  #
-# returned. Note that GPS records are non-repeatable in   #
-# nature, so there is no need for an 'UPDATE' action in   #
-# addition to 'ADD' (they both would overwrite an old     #
-# record if it has the same tag as a new record); $action #
-# equal to 'REPLACE', on the other hand, clears the GPS   #
-# record list before the insertions. GPS records' tags    #
-# can be give textually or numerically.                   #
+# This private method is called by set_Exif_data when the #
+# $what argument is set to 'THUMBNAIL'. $data must be a   #
+# reference to a scalar value (undefined is an error!).   #
+# First, we erase all thumbnail related records from IFD1 #
+# then we reinsert those which are appropriate. Last, the #
+# update method is called (this also fixes some fields).  #
 # ------------------------------------------------------- #
-# This method creates a GPS record subdirectory if it is  #
-# not present, so you can call it also on GPS-less files. #
-# A GPSVersionID is forced, if it is not present at the   #
-# end of the process, because it is mandatory. Records    #
-# are rewritten to the GPS subdirectory in increasing     #
-# (numerical) tag order. Note that there are some record  #
-# intercorrelations which are still neglected here.       #
-# ------------------------------------------------------- #
-# GPS data are quite easy since none of them can appear   #
-# twice, and the syntax is quite clear. First, the tags   #
-# are checked for validity and converted to numeric form. #
-# Records with undefined values are rejected. Then, the   #
-# specifications for each given tag are read from a       #
-# helper table: values are matched against a regular      #
-# expression (or a surrogate). Then a Record object is    #
-# forged and evaluated to see if it is valid and it       #
-# corresponds to the user will. If all these checks are   #
-# OK, the GPS record is finally inserted.                 #
+# ($$data eq ''): nothing else to do, thumbnail erased.   #
+# ($$data equal to a JPEG stream): thumbnail data are     #
+#    saved in the root level directory, and a few records #
+#    are added to IFD1: 'JPEGInterchangeFormat' (offset), #
+#    'JPEGInterchangeFormatLength', and 'Compression' set #
+#    to six (this indicates a JPEG thumbnail).            #
 ###########################################################
-sub set_Exif_data_GPS_DATA {
-    my ($this, $data, $action) = @_;
+sub set_Exif_thumbnail {
+    my ($this, $dataref) = @_;
+    # $dataref must be a scalar reference; everything else, including an
+    # undefined value, is an error (I don't want the user to erase the
+    # thumbnail by passing an erroneously undefined reference).
+    return{'ERROR'=>'$data not a scalar reference'}if ref $dataref ne 'SCALAR';
+    # the following lists contain all records to be erased before inserting
+    # the new thumbnail. They are inserted in a hash for faster lookup
+    my %thumb_records = map { $_ => 1 } 
+    ('Compression', 'JPEGInterchangeFormat', 'JPEGInterchangeFormatLength',
+     'StripOffsets','ImageWidth','ImageLength','BitsPerSample',
+     'SamplesPerPixel', 'RowsPerStrip', 'StripByteCounts');
+    # try to recognise the content of $$dataref. If it is defined but empty,
+    # we just need to erase the thumbnail. If it is accepted by the JPEG
+    # ctor, we consider it a regular JPEG file.
+    my $type = 'UNKNOWN';
+    $type = 'NONE' if length $$dataref == 0;
+    $type = 'JPEG' if Image::MetaData::JPEG->new($dataref, '');
+    # If $$dataref is not recognised, generate an error ...
+    return {'Error'=>'TIFF thumbnails not yet supported'}if $type eq 'UNKNOWN';
+    # get the appropriate record lists (IFD1) (build it if not present)
+    my $ifd1_list = $this->build_IFD_directory_tree('APP1@IFD1');    
+    # delete all tags mentioned in %forbidden. This is a fresh start before
+    # inserting a new thumbnail (and the whole story if $type is 'NONE')
+    @$ifd1_list = grep 
+    {! exists $thumb_records{JPEG_lookup('APP1@IFD1', $_->{key})}} @$ifd1_list;
+    # delete existing thumbnail data and replace it if necessary; this
+    # "record" is in the root directory, and a regular expression check
+    # is really impossible. So, we adopt a low-level approach here ...
+    my $root_list = $this->{records};
+    @$root_list = grep { $_->{key} ne 'ThumbnailData' } @$root_list;
+    # insert the thumbnail, if necessary (this must be the last record)
+    push @$root_list, new Image::MetaData::JPEG::Record
+	('ThumbnailData', $UNDEF, $dataref, length $$dataref) if $dataref;
+    # if $type is 'JPEG', we need to insert some records in IFD1 ...
+    if ($type eq 'JPEG') {
+	# we have two non-offset records: the thumbnail type and its length
+	my $records = { 'Compression' => 6, # 6 means JPEG-compressed
+			'JPEGInterchangeFormatLength' => length $$dataref };
+	# analyse the passed records for correctness (semi-paranoia)
+	my ($rej, $accepted) = $this->screen_records($records,'APP1@IFD1','T');
+	# $rej must be an empty hash, or we have a problem
+	return { 'Error' => 'Records rejected internally! [JPEG]' } if %$rej;
+	# add all other old (non-thumbnail-related) records
+	complement_records($ifd1_list, $accepted);
+	# add the 'JPEGInterchangeFormat' record (an offset). This is really
+	# dummy, it is here to trigger the correct behaviour in update(), but
+	# I really should modify update() to make it calculate the field on
+	# its own (since it already calcuates its value anyway).
+	my $JIF = JPEG_lookup('APP1@IFD1', 'JPEGInterchangeFormat');
+	$$accepted{$JIF} = new 
+	    Image::MetaData::JPEG::Record($JIF, $LONG, \ ("\000" x 4), 1);
+	# take all records from $accepted and set them into the record
+	# list (their order must anambiguous, so perform a clever sorting).
+	@$ifd1_list = ordered_record_list($accepted, 'APP1@IFD1'); }
+    # remember to commit these changes to the data area
+    $this->update();
+    # return success (a reference to an empty hash)
+    return {};
+}
+
+###########################################################
+# This helper function returns an ordered list of records.#
+# Records are sorted according to the numerical value of  #
+# their key; if the key is not numeric, but its transla-  #
+# tion matches Idx-n, n is used. If even this fails, a    #
+# stringwise comparison is performed ($REFERENCE records).#
+###########################################################
+sub ordered_record_list {
+    my ($data, $path) = @_;
+    # a regular expression for an integer positive number
+    my $num = qr/^\d+$/o;
+    # tag to number translation; if the tag is not numeric and translates
+    # to Idx-n, return n. If even this fails, return the textual tag itself
+    # (the last case should be restricted to subdirectory entries).
+    my $tag_index = sub { return $_[0] if $_[0] =~ /$num/;
+			  my $n = JPEG_lookup($path, $_[0]);
+			  $n =~ s/^Idx-(\d+)$/$1/; $n =~ /$num/ ? $n : $_[0] };
+    # numeric comparison when possible, stringwise comparison otherwise
+    my $comp = sub { (grep {!/$num/} @_) ? $_[0] cmp $_[1] : $_[0] <=> $_[1] };
+    # the actual sorting function for the sort operator
+    my $or = sub { &$comp(&$tag_index($a), &$tag_index($b)) };
+    # take all records from $data and perform a sorting
+    map {$$data{$_}} sort {&$or} keys %$data;
+}
+
+###########################################################
+# This method, obviously, creates a (sub)directory tree   #
+# in an IFD-like segment (i.e. APP1/APP3). The argument   #
+# is a string describing the tree, like 'APP1@IFD0@GPS'.  #
+# This method takes care of the "extra" field of the      #
+# newly created directories if mandatory or useful. The   #
+# return value is the record list of the deepest subdir.  #
+###########################################################
+sub build_IFD_directory_tree {
+    my ($this, $dirnames) = @_;
+    # split the passed string into tokens on '@'
+    my @dirnames = split '@', $dirnames;
+    # the first token is to be singled out. It should always
+    # correspond to the segment name, so we force a check here
+    my $first = shift @dirnames;
+    die "Incorrect segment name in build_directory_tree ($first)"
+	unless $first eq $this->{name};
+    # prepare two "running" variables
+    my $dirref = $this->{records};
+    my $path = $first;
+    # travel through the token list and create the tree
+    for my $name (@dirnames) {
+	# this call creates subdir $name in $dirref if absent
+	$this->provide_subdirectory($name, $dirref);
+	# get the $REFERENCE record for the subdir $name
+	my $record = $this->search_record($name, $dirref);
+	# if there is information in %IFD_SUBDIR ...
+	if (exists $IFD_SUBDIRS{$path}) {
+	    # get the reverse (offset tag => subdir name) mapping
+	    my %revmapping = reverse %{$IFD_SUBDIRS{$path}};
+	    # if $name is present in %revmapping, set the "extra" field
+	    # of $record. This used to be necessary during the dump stage;
+	    # now, it could be avoided by using %IFD_SUBDIRS, but displaying
+	    # this kind of information is nonetheless usefull.
+	    $record->{extra} = JPEG_lookup($path, $revmapping{$name})
+		if exists $revmapping{$name}; }
+	# update the running variables
+	$dirref = $record->get_value();
+	$path = join '@', $path, $name; }
+    # return the final value of $dirref
+    return $dirref;
+}
+
+###########################################################
+# This helper private function takes a reference to a Re- #
+# cord list or hash and a reference to a Record hash, and #
+# inserts all records from the first container into the   #
+# hash, unless its key is already present.                #
+###########################################################
+sub complement_records {
+    my ($record_container, $record_hash) = @_;
+    # be sure that the first argument is not a scalar
+    die "first argument in complement records is not a reference"
+	unless ref $record_container;
+    # get a record list from the record container
+    my $record_list = (ref $record_container eq 'HASH') ?
+	[ values %$record_container ] : $record_container;
+    # records from a list
+    for (@$record_list) {
+	$$record_hash{$_->{key}} = $_ 
+	    unless exists $$record_hash{$_->{key}}; }
+}
+
+###########################################################
+# This method takes a hash reference [$data] and an IFD   #
+# path specification [$path] (like 'APP1@IFD0@GPS'). It   #
+# then tries to convert the elements of $data into valid  #
+# records according to the specific syntactical rules of  #
+# the corresponding IFD. It returns a list of two hash    #
+# references: the first list contains the key-recordref   #
+# pairs for successful conversions, the other one the     #
+# key-value(ref) pairs for unsuccessful ones.             #
+#---------------------------------------------------------#
+# Records' tags can be give textually or numerically.     #
+# First, the tags are checked for validity and converted  #
+# to numeric form (records with undefined values are      #
+# immediately rejected). Then, the specifications for     #
+# each tag are read from a helper table and values are    #
+# matched against a regular expression (or a surrogate,   #
+# see %special_screen_rules). Then a Record object is     #
+# forged and evaluated to see if it is valid and it       #
+# corresponds to the user will.                           #
+#---------------------------------------------------------#
+# New feature: if the record value is a code reference    #
+# instead of an array reference, the corresponding code   #
+# is executed (passing the optional value $optional) and  #
+# the result is stored. This is necessary for mandatory   #
+# records which need to know the current segment.         #
+#---------------------------------------------------------#
+# New feature. The syntax hash can have a fifth field,    #
+# acting as a filter. Unless it matches the optional      #
+# $fregex argument, the record is rejected. This allows   #
+# us to exclude some tags from general usage. If $fregex  #
+# is undefined, all tags with a filter are rejected.      #
+###########################################################
+sub screen_records {
+    my ($this, $data, $path, $fregex) = @_;
     # prepare two hashes for rejected and accepted records
-    my $data_rejected = {}; my $data_accepted = {};
-    # ask the IFD0 record list where is the GPS record list
-    my $ifd0_list = $this->search_record('IFD0')->get_value();
-    my $gps_ref = $this->search_record('GPS', $ifd0_list);
-    # if it does not exist, create it; since version 10.f, we do not
-    # need to store a GPS offset record too (its value would in any
-    # case be wrong, it will be calculated automatically at update time).
-    # we need however to set the "extra" field of this REFERENCE record,
-    # in order to mimick the case when it is parsed directly from a file.
-    if (! $gps_ref) {
-	my $rec = new Image::MetaData::JPEG::Record('GPS', $REFERENCE, \ []);
-	$rec->{extra} = 'GPSInfo'; push @$ifd0_list, $rec; }
-    # get the GPS directory reference
-    my $gps_ref_record = $this->search_record('GPS', $ifd0_list);
-    # get the empty record list, to be filled
-    my $record_list = $gps_ref_record->get_value();
-    # For $action equal to 'ADD', we read the old records and insert
-    # them in the $data_accepted hash (they will be overwritten by user
-    # supplied data if necessary). If $action is 'REPLACE' we completely
-    # forget about the past.
-    unless ($action =~ 'REPLACE') { 
-	$$data_accepted{$_->{'key'}} = $_ for @$record_list; }
-    # now, clear the GPS record list (dangerous?)
-    @$record_list = ();
+    my $rejected = {}; my $accepted = {};
+    # die immediately if $data or $path are not defined
+    die "Undefined arguments to screen_records"
+	unless defined $data && defined $path;
+    # get a reference to the hash with all record properties
+    die "IFD subdir supporting hash not found for $path"
+	unless exists $IFD_SUBDIRS{$path};
+    die "IFD subdir syntax specification not found for $path"
+	unless my $syntax = $IFD_SUBDIRS{$path}{'__syntax'};
     # loop over entries in $data and decide whether to accept them or not
     while (my ($key, $value) = each %$data) {
 	# do a key lookup and save the result
-	my $key_lookup = JPEG_lookup('APP1', 'IFD0', 'GPS', $key);
-	# translate textual tags to numbers if possible
-	$key = $key_lookup if $key_lookup && $key !~ /^\d*$/;
+	my $key_lookup = JPEG_lookup($path, $key);
+	# use the looked-up key if it is numeric
+	$key = $key_lookup if defined $key_lookup && $key_lookup =~ /^\d+$/;
 	# I have never been optimist ...
-	$$data_rejected{$key} = $value;
+	$$rejected{$key} = $value;
 	# reject unknown keys
-	next unless $key_lookup;
+	next unless defined $key_lookup;
 	# of course, check that $value is defined
 	next unless defined $value;
+	# if value is a code reference, execute it, passing $this
+	$value = &$value($this) if ref $value eq 'CODE';
 	# if value is a scalar, transform it into a single-valued array
 	$value = [ $value ] unless ref $value;
 	# $value must now be an array reference
 	next unless ref $value eq 'ARRAY';
 	# get all mandatory properties of this record
-	my ($name, $type, $count, $regex) = @{$HASH_GPS_GENERAL{$key}};
+	my ($name, $type, $count, $rule, $filter) = @{$$syntax{$key}};
+	# a "rule" matching 'calculated' means that this record
+	# cannot be supplied by the user (so, we reject it)
+	next if $rule =~ /calculated/;
+	# very special mechanism to inhibit some tags
+	next if defined $filter && ((!defined $fregex)||($filter!~/$fregex/));
 	# if $type is $ASCII and $$value[0] is not null terminated,
 	# we are going to add the null character for the lazy user
 	$$value[0].="\000" if $type==$ASCII && @$value && $$value[0]!~/\000$/;
-	# a latitude or a longitude is stored as a sequence of three
-	# rationals (degrees, minutes and seconds), i.e., six unsigned
-	# integers; Also the time stamp is stored as three rationals
-	# (why?); in this case the test is the same but 90 is replaced by 24.
-	if ($regex =~ /latlong|stupidtime/) {
-	    my @v = @$value; next unless eval
-	    { die if grep { $_ < 0 } @v;
-	      my ($dd, $mm, $ss) = ($v[0]/$v[1], $v[2]/$v[3], $v[4]/$v[5]);
-	      my $limit = ($regex =~ /stupidtime/) ? 24 : 90;
-	      die unless $mm < 60 && $ss < 60 && $dd <= $limit;
-	      die unless ($dd + $mm /60 + $ss/360) <= $limit; }; }
-	# a direction is a rational number in [0.00, 359.99]
-	elsif ($regex =~ /direction/) {
-	    next unless eval {
-		die if grep { $_ < 0 } @$value;
-		my $dire = $$value[0]/$$value[1]; die if $dire >= 360;
-		die unless $dire =~ /^\d+(\.\d{1,2})?$/; }; }
-	# now check real regular expressions (if the record is
-	# multi-valued, the same $regex must match all the elements).
-	else { next unless scalar @$value == grep { $_ =~ /^$regex$/} @$value;}
-	# now we are going to play with the internals of the Record
-	# class (so, this part is very prone to errors), but it is
-	# necessary if we want the user input to be intuitive;
-	my $rec = new Image::MetaData::JPEG::Record($key, $ASCII, \ "");
-	# fix the type andd value list of the record and let's hope
-	$rec->{type}   = $type;
-	$rec->{values} = $value;
-	# try to get back the record properties; since I suspect
-	# that this can fail (because the value list was arbitrarily
-	# transplanted) this inquiry is executed in an eval, and the
-	# result is tested. If the eval fails, we give up
-	my ($a_key, $a_type, $a_count, $a_dataref) = eval { $rec->get() };
-	next if $@;
-	# if the record is miraculously alive, let us check that the
-	# returned properties are as requested; otherwise give up (when
-	# $count is undefined, we do not need to check it [variable])
-	next unless $type == $a_type && (! $count || $count == $a_count);
+	# if $rule points to an anonymous subroutine (i.e., a special rule,
+	# execute the corresponding code and reject if it fails (i.e. dies);
+	# otherwise, $rule must be interpreted as a regular expression (if
+	# the record is multi-valued, $rule must match all the elements).
+	if (ref $rule eq 'CODE') { eval { &$rule(@$value) }; next if $@; }
+	else { next unless scalar @$value == grep {$_ =~ /^$rule$/s} @$value; }
+	# let us see if the values can actually be saved
+	# in a record ($record remains undef on failure). 
+	next unless my $record = 
+	    Image::MetaData::JPEG::Record->check_consistency
+	    ($key, $type, $count, $value);
 	# well, it seems that the record is OK, so my pessimism
 	# was not justified. Let us change the record status
-	delete $$data_rejected{$key};
-	$$data_accepted{$key} = $rec;
+	delete $$rejected{$key};
+	$$accepted{$key} = $record;
     }
-    # supply the mandatory GPS version if not present (use v.2.2)
-    my $version_key = 0;
-    unless (exists $$data_accepted{$version_key}) {
-	my ($name, $type, $count, $regex) = @{$HASH_GPS_GENERAL{$version_key}};
-	$$data_accepted{$version_key} = new Image::MetaData::JPEG::Record
-	    ($version_key, $type, \ "\002\002\000\000", $count); }
-    # now, take all data from $data_accepted and write the corresponding
-    # records to the GPS record list (in increasing numeric key order)
-    push @$record_list, $$data_accepted{$_}
-    for sort {$a <=> $b} keys %$data_accepted;
-    # remember to commit these changes to the data area
-    $this->update();
-    # that's it, return the reference to the rejected data hash
-    return $data_rejected;
+    # return references to accepted and rejected data
+    return ($rejected, $accepted);
 }
-
-###########################################################
-# This method ....
-###########################################################
-#sub set_Exif_data_THUMBNAIL {
-#    my ($this, $data) = @_;
-    # $data must be a reference to a scalar
-#    return undef unless ref $data eq 'SCALAR';
-    # JPEG thumbnails can be either JPEG images or uncompressed
-    # data in one of three formats. It is important to try to
-    # understand the type of passed data. 
-#    my $type = undef;
-    # if it is a JPEG picture, it can be parsed by this module.
-    # Well, this is not really a proof that it is a valid JPEG image,
-    # but for the time being it will do the job.
-#    if (my $image = new Image::MetaData::JPEG($data)) {
-#	my $segments = $image->{segments};
-	# JPEG thumbnails cannot contain application or comment segments,
-	# as well as restart markers (but this isn't detected yet!)
-#	return undef if scalar grep { $_->{name} =~ 'APP|COM|RST' } @$segments;
-	# since we are satisfied that it is a JPEG thumbnail, we set $type
-#	$type = 'JPEG';
-	# JPEGInterchangeFormat
-	# JPEGInterchangeFormatLength
-#    }
-
-#}
-
-    # Baseline TIFF Rev.6.0 RGB Full Color Images
-
-    # TIFF Rev.6.0 Extensions YCbCr Images
-    # -----> all tags for RGB data
-    # -----> YCbCrCoefficients
-    # -----> YCbCrSubsampling
-    # -----> YCbCrPositioning
-
-
-    # 'Compression' deve essere calcolato!!!
-
-
-#uncompressed chunky,
-#uncompressed planar,
-#uncompressed YCbCr
-#JPEG compressed
-
-#M (mandatory)
-#R (recommended)
-#O (optional)
-#N (not_recorded)
-#J (included in JPEG marker and so not recorded).
-
-#     Hexadecimal code                count   IFD1 notes
-#  class |  Tag name                 type |   |    |
-#  |     |  |                           | |   |    |
-#  A   100  ImageWidth                  I 1   MMMJ ***
-#  A   101  ImageLength                 I 1   MMMJ ***
-#  A   102  BitsPerSample               S 3   MMMJ ***
-#  A   106  PhotometricInterpretation   S 1   MMMJ *** (2 or 6)
-#  B   111  StripOffsets                I -   MMMN ***
-#  A   115  SamplesPerPixel             S 1   MMMJ ***
-#  B   116  RowsPerStrip                I 1   MMMN ***
-#  B   117  StripByteCounts             I -   MMMN ***
-#  A   11a  XResolution                 R 1   MMMM [72 default]
-#  A   11b  YResolution                 R 1   MMMM [72 default]
-#  A   11c  PlanarConfiguration         S 1   OMOJ *** (1 or 2)
-#  A   128  ResolutionUnit              S 1   MMMM (2 or 3)
-#  B   201  JPEGInterchangeFormat       L 1   NNNM calculated, in IFD1
-#  B   202  JPEGInterchangeFormatLength L 1   NNNM calculated, in IFD1
-#  C   211  YCbCrCoefficients           R 3   NNOO .
-#  A   212  YCbCrSubSampling            S 2   NNMJ *** ([2,1] or [2,2])
-#  A   213  YCbCrPositioning            S 1   NNOO (1 or 2)
-##
-#
-#
-#}
-
-
-
-#    # the first possibility corresponds to $data being a hash
-#    # reference, with the key corresponding to a dataset tag
-#    # and the value to an array reference (the array contains
-#    # the dataset values).
-#    if (defined ref $data && ref $data eq 'HASH') {
-#	# are we dealing with numeric or textual keys? Try to
-#	# guess with a statistical approach on key regex matches.
-#	my $hits = scalar map { $_ =~ /^[0-9]*$/ } keys %$data;
-#	# if keys are believed to be textual, translate them
-#	# to numeric keys. Filter out invalid dataset tags
-#	%$data = map { ! exists $IPTC_names{$_} ? die "Invalid key $_" :
-#			   $IPTC_names{$_} => $$data{$_} } keys %$data
-#			   if $hits <= (scalar keys %$data) / 2;
-#    }
-#    # $data is a hash reference now, with numeric keys.
-#    # Perform a last check on the validity of keys.
-#    map { die "Invalid key $_" unless exists $IPTC_tags{$_} } keys %$data;
-#    # if $action is 'REPLACE', all records need to be eliminated
-#    # before pushing the new ones in.
-#    my $dirref = $this->provide_IPTC_subdirectory();
-#    @$dirref = () if $action eq 'REPLACE';
-#    # now all keys are surely valid and numeric. For each element
-#    # in the hash, create one or more Records corresponding to a
-#    # dataset and insert it into the appropriate subdirectory
-#    map { my $key = $_; map {
-#	# each element of the array in a hash element creates a new Record
-#	$this->store_record($dirref,$key,$ASCII,\$_,length $_); } @{$$data{$_}}
-#	  # sort the Records on the numeric key
-#      } sort { $a <=> $b } keys %$data;
-#    # be sure that the first record is 'RecordVersion', i.e., dataset
-#    # number zero. Create and insert, if necessary (with version = 2) ?
-#    $this->store_record($dirref, 0, $UNDEF, \ "\000\002", 2),
-#    unshift @$dirref, pop @$dirref unless @$dirref && $$dirref[0]->{key} == 0;
-#    # remember to commit these changes to the data area
-#    $this->update();
-
 
 # successful package load
 1;

@@ -7,8 +7,7 @@ use Image::MetaData::JPEG::Tables;
 my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
-my $cphoto = 't/test_photo_copy.jpg';
-my ($image, $image2, $seg, $hash, $lat, $track, $str, $d1, $d2);
+my ($image, $image2, $seg, $hash, $lat, $track, $str, $d1, $d2, $ref);
 
 my $GPS_data = {
     'GPSLatitudeRef'  => "N\000",
@@ -43,12 +42,12 @@ my $GPS_data = {
     'GPSDifferential' => 0 };
 
 #=======================================
-diag "Testing APP1 Exif data routines (GPS - set)";
-plan tests => 38;
+diag "Testing APP1 Exif data routines (GPS_DATA)";
+plan tests => 39;
 #=======================================
 
 #########################
-$image = $cname->new($tphoto);
+$image = $cname->new($tphoto, '^APP1$');
 $seg   = $image->retrieve_app1_Exif_segment(0);
 isnt( $seg, undef, "The Exif segment is there, hi!" );
 
@@ -79,7 +78,12 @@ is_deeply( $hash, {}, "also REPLACing works" );
 
 #########################
 $hash = $seg->get_Exif_data('GPS_DATA', 'TEXTUAL');
-is_deeply( $$hash{'GPSVersionID'}, [2, 2, 0, 0], "VersionID replaced" );
+is_deeply( $$hash{'GPSVersionID'}, [2, 2, 0, 0], "Automatic VersionID works" );
+
+#########################
+$seg->set_Exif_data({'GPSVersionID' => [4, 5, 6, 7]}, 'GPS_DATA', 'ADD');
+$hash = $seg->get_Exif_data('GPS_DATA', 'TEXTUAL');
+is_deeply( $$hash{'GPSVersionID'}, [4, 5, 6, 7], "Manual VersionID works" );
 
 #########################
 $hash = $image->set_Exif_data($GPS_data, 'GPS_DATA', 'ADD');
@@ -87,14 +91,14 @@ is_deeply( $hash, {}, "adding through image object" );
 
 #########################
 $image->remove_app1_Exif_info(-1);
-$image->provide_app1_Exif_segment();
 $hash = $image->set_Exif_data($GPS_data, 'GPS_DATA', 'ADD');
 is_deeply( $hash, {}, "adding without the GPS dir" );
 
 #########################
-$image->save($cphoto);
-$image2 = new Image::MetaData::JPEG($cphoto);
-unlink $cphoto;
+$ref = \ "dummy";
+$image->save($ref);
+$image2 = $cname->new($ref, '^APP1$');
+$_->{parent} = $image for @{$image2->{segments}}; # parental link hack
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################
@@ -105,7 +109,7 @@ $d2 =~ s/(.*REFERENCE.*-->).*/$1/g; $d2 =~ s/Original.*//g;
 is( $d1, $d2, "Descriptions after write/read cycle are coincident" );
 
 #########################
-$image = $cname->new($tphoto);
+$image = $cname->new($tphoto, '^APP1$', 'FASTREADONLY');
 $hash = $image->set_Exif_data({'GPSLatitudeRef' =>"W\000"}, 'GPS_DATA', 'ADD');
 ok( exists $$hash{1}, "Malformed LatitudeRef rejected" );
 

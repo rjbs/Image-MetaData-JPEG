@@ -285,26 +285,23 @@ sub parse_app1_exif {
     # note is decoded, the findings are written in a new subdirectory (I
     # think it is still wiser not to delete the unparsed MakerNote record).
     my $ifd1_link = $this->parse_ifd('IFD0', $ifd0_link, $tiff_base, \$offset);
-    # same thing for the 1st IFD. In this case the test is not
-    # on $ifd1_link being defined, but on it being zero or not.
-    if ($ifd1_link != 0) {
-	$this->parse_ifd('IFD1', $ifd1_link, $tiff_base, \$offset, 1);
-	# look for the compression tag (thumbnail type record)
-	my $ifd1_dir       = $this->provide_subdirectory('IFD1');
-	my $th_type_record = $this->search_record($APP1_TH_TYPE, $ifd1_dir);
-	# if there is no thumbnail, stop searching
-	goto END_THUMBNAIL unless defined $th_type_record;
-	# otherwise, look at the thumbnail type. This should be either
-	# TIFF or JPEG. Die if the type is not known
-	my $th_type = $th_type_record->get_value();
+    # same thing for the 1st IFD. In this case the test is not on $ifd1_link
+    # being defined, but on it being zero or not. The returned values is
+    # forced to be zero (this is the meaning of the final '1' in parse_ifd)
+    $this->parse_ifd('IFD1', $ifd1_link, $tiff_base, \$offset,1) if $ifd1_link;
+    # look for the compression tag (thumbnail type record). If it is
+    # present, we definitely need to look for the thumbnail (boring)
+    my $th_type = $this->search_record_value('IFD1', $APP1_TH_TYPE);
+    if (defined $th_type) {
+	# thumbnail type should be either TIFF or JPEG. Die if not known
 	die "Unknown thumbnail type in $this->{name} ($th_type)"
 	    if $th_type != $APP1_TH_TIFF && $th_type != $APP1_TH_JPEG;
 	# calculate the thumbnail location and size
-	my ($thumb_link, $thumb_size) = map {
-	    my $rec = $this->search_record($_, $ifd1_dir);
-	    $rec ? $rec->get_value() : undef } $th_type == $APP1_TH_TIFF
-		? ($THTIFF_OFFSET, $THTIFF_LENGTH) 
-		: ($THJPEG_OFFSET, $THJPEG_LENGTH);
+	my ($thumb_link, $thumb_size) =
+	    map { $this->search_record_value('IFD1', $_) }
+	      $th_type == $APP1_TH_TIFF
+	        ? ($THTIFF_OFFSET, $THTIFF_LENGTH) 
+	        : ($THJPEG_OFFSET, $THJPEG_LENGTH);
 	# Some pictures declare they have a thumbnail, but there is
 	# no thumbnail link for it (maybe this is due to some program
 	# which strips the thumbnail out without completely removing
@@ -375,10 +372,11 @@ sub parse_TIFF_header {
     die "Incorrect identifier ($identifier)"if $identifier ne $good_identifier;
     # save the current offset for later use (TIFF header starts here)
     my $tiff_base = $offset;
-    # decode the endianness (either 'II' or 'MM',
-    # 2 bytes); die if it is unknown
+    # decode the endianness (either 'II' or 'MM', 2 bytes); this is
+    # not an $ASCII string (no terminating null character), so it is
+    # better to use the $UNDEF type; die if it is unknown
     my $endianness = $this->store_record
-	('Endianness', $ASCII, $offset, 2)->get_value();
+	('Endianness', $UNDEF, $offset, 2)->get_value();
     die "Unknown endianness ($endianness)"
 	if $endianness ne $BIG_ENDIAN && $endianness ne $LITTLE_ENDIAN;
     # if it is not unknown, set the current endianness
@@ -463,26 +461,33 @@ sub parse_ifd {
     # IFD; this is an unsigned long, i.e. 4 bytes. If there
     # is no next IFD, these bytes are 0x00000000.
     my $next_ifd_link = $this->read_record($LONG, $$offset_ref);
-    # take care of possible subdirectories. For each numeric tag
-    # among the keys of the %IFD_SUBDIRS hash, look for a corresponding
-    # record and, if present, parse the subdirectory
-    for (keys %IFD_SUBDIRS) {
-	# don't parse if there is no such subdirectory
-	next unless defined (my $record = $this->search_record($_, $dirref));
-	# get the location of this secondary IFD and parse it
-	$this->parse_ifd($IFD_SUBDIRS{$_},
-			 $record->get_value(), $tiff_base, $offset_ref, 1);
-	# mark the record containing the offset to the newly created
-	# IFD by setting its "extra" field. This record isn't any more
-	# interesting after we have used it, and should be recalculated
-	# every time we change the Exif data area.
-	$record->{extra} = "deleteme";
-	# Look for the new IFD referece (it should be the last record
-	# in the current subdirectory) and set its "extra" field to
-	# the (textually translated) key of $record, just for reference
-	$this->search_record('LAST_RECORD', $dirref)->{extra} =
-	    JPEG_lookup($this->{name}, split(/@/, $dirnames), $record->{key});
-    }
+    # take care of possible subdirectories. First, create a
+    # string with the current IFD or sub-IFD path name.
+    my $path = join '@', $this->{name}, $dirnames;
+    # Now look into %IFD_SUBDIRS to see if this path is a valid key; if
+    # it is (i.e. subdirs are possible), inspect the relevant mapping hash
+    if (exists $IFD_SUBDIRS{$path}) {
+	my $mapping = $IFD_SUBDIRS{$path};
+	# $tag is a numerical value, not a string
+	foreach my $tag (sort keys %$mapping) {
+	    # don't parse if there is no such subdirectory
+	    next unless defined 
+		(my $record = $this->search_record($tag, $dirref));
+	    # get the location of this secondary IFD and parse it
+	    my $extended_dirnames = join '@', $dirnames, $$mapping{$tag};
+	    $this->parse_ifd($extended_dirnames, $record->get_value(),
+			     $tiff_base, $offset_ref, 1);
+	    # mark the record containing the offset to the newly created
+	    # IFD by setting its "extra" field. This record isn't any more
+	    # interesting after we have used it, and should be recalculated
+	    # every time we change the Exif data area.
+	    $record->{extra} = "deleteme";
+	    # Look for the new IFD referece (it should be the last record
+	    # in the current subdirectory) and set its "extra" field to
+	    # the tag name of $record, just for reference
+	    $this->search_record('LAST_RECORD', $dirref)->{extra} =
+		JPEG_lookup($path, $tag);
+	} }
     # remove all records marked for deletion in the current subdirectory
     # (remember that "extra" is most of the time undefined).
     @$dirref = grep { ! $_->{extra} || $_->{extra} ne "deleteme" } @$dirref;
@@ -547,27 +552,27 @@ sub parse_interop {
     return $offset;
 }
 
-########
-sub parse_makernote {
-    return;
-    my ($this, $dirnames, $makernote, $tiff_base, $offset_ref) = @_;
-
-    my @IFD_LIKE_MAKERNOTES = ( "OLYMP\000\001\000",
-				"FUJIFILM\014\000\000\000" );
-
-    for (@IFD_LIKE_MAKERNOTES) {
-	next unless $makernote =~ $_;
-	$dirnames .= "_OLYMPUS";
-
-	my $link = index $this->data(0, $this->size()), $makernote;
-	$link += (length $_) - 2;
-	print "LINK $link\n";
-
-	eval { $this->parse_ifd($dirnames, $link, $tiff_base, $offset_ref);};
-	$this->create_record('MakerNoteError', $ASCII, \$@, length $@) if $@;
-    }
-
-}
+######## to be designed and implemented
+#sub parse_makernote {
+#    return;
+#    my ($this, $dirnames, $makernote, $tiff_base, $offset_ref) = @_;
+#
+#    my @IFD_LIKE_MAKERNOTES = ( "OLYMP\000\001\000",
+#				"FUJIFILM\014\000\000\000" );
+#
+#    for (@IFD_LIKE_MAKERNOTES) {
+#	next unless $makernote =~ $_;
+#	$dirnames .= "_OLYMPUS";
+#
+#	my $link = index $this->data(0, $this->size()), $makernote;
+#	$link += (length $_) - 2;
+#	print "LINK $link\n";
+#
+#	eval { $this->parse_ifd($dirnames, $link, $tiff_base, $offset_ref);};
+#	$this->create_record('MakerNoteError', $ASCII, \$@, length $@) if $@;
+#    }
+#
+#}
 
 ###########################################################
 # This method parses an APP1 XMP segment. Such an APP1    #
@@ -947,14 +952,14 @@ sub parse_app2_ICC_tags {
 	# If the type is variable-length (i.e., if get_size returns
 	# zero), $tag_count must be indeed equal to $tag_size.
 	my $tag_length = Image::MetaData::JPEG::Record->get_size($tag_type, 1);
-	my $tag_count  = ($tag_length == 0) ? $tag_size : $tag_size/$tag_length;
+	my $tag_count  = ($tag_length == 0)? $tag_size : $tag_size/$tag_length;
 	# now, store the content of the tag data area (minus the first
 	# 8 bytes) as a record of given key, type and count. Store the
 	# record in the tag table subdirectory.
 	$this->store_record($tag_table, $tag_code, $tag_type,
 			    \ $this->data($tag_offset, $tag_size), $tag_count);
 	# also store the ICC tag type in the record "extra" field
-	$this->search_record("LAST_RECORD", $tag_table)->{extra} = $tag_desc;
+	$this->search_record('LAST_RECORD', $tag_table)->{extra} = $tag_desc;
     }
 }
 
@@ -1134,6 +1139,12 @@ sub parse_app13 {
 #   ....    name (padded to make size even incl. length)  #
 #  4 bytes  size of resource data (following data only)   #
 #   ....    data (padded to make size even)               #
+#---------------------------------------------------------#
+# The content of each Photoshop non-IPTC data block is    #
+# transformed into a record and put in a common subdir.   #
+# The IPTC data block instead is analysed in detail, and  #
+# all the findings are stored in another subdir. Empty    #
+# subdirs are not created.                                #
 #=========================================================#
 # Ref: "Adobe Photoshop 6.0: File Formats Specifications",#
 #      Adobe System Inc., ver.6.0, rel.2, November 2000.  #
@@ -1153,7 +1164,8 @@ sub parse_resource_data_block {
     my $identifier = $this->read_record($SHORT, $offset);
     # get the name length and the name. The length is the first byte.
     # The name can be padded so that length+name span an even number
-    # of bytes. Usually the name is "", so we get "\000\000" here.
+    # of bytes. Usually the name is "" (the empty string, with length
+    # 0, not "\000", which has length 1) so we get "\000\000" here.
     my $name_length = $this->read_record($BYTE, $offset);
     my $name = $this->read_record($ASCII, $offset, $name_length);
     # read the padding byte if length was even
@@ -1169,22 +1181,24 @@ sub parse_resource_data_block {
     # calculate the absolute end of the resource data block
     my $boundary = $offset + $data_length;
     # currently, the IPTC block deserves as special treatment
-    if ($identifier eq $APP13_PHOTOSHOP_IPTC) {
-	# create the IPTC subdirectory reference
-	$this->provide_subdirectory("IPTC_RECORD_2");
-	# now, repeatedly read data from the data block, till and
-	# amount of data equal to $data_length has been read; this
-	# routine, as usual, returns the new working offset at the end.
-	# The IPTC records are written in a separate subdirectory.
-	$offset = $this->parse_IPTC_dataset($offset) while ($offset<$boundary);
-    } else {
-	# less interesting tags are mistreated ...
-	$this->store_record($identifier, $UNDEF, $offset, $data_length);
-    }
-    # if $name is non-trivial, it (should) correspond to the resource
-    # block description; in any case, it needs to be remembered (store
-    # it in the "extra" field). (is this old-style or new-style?).
-    $this->search_record("LAST_RECORD")->{extra} = $name if $name ne "\000";
+    my $is_IPTC = $identifier eq $APP13_PHOTOSHOP_IPTC;
+    # create the appropriate subdirectory reference
+    my $dir = $this->provide_subdirectory
+	($is_IPTC ? $APP13_IPTC_DIRNAME : $APP13_PHOTOSHOP_DIRNAME);
+    # if it is an IPTC block, repeatedly read data from the data block,
+    # till an amount of data equal to $data_length has been read; this
+    # routine, as usual, returns the new working offset at the end.
+    # The IPTC records are written in a separate subdirectory (but reset
+    # $dir to the root directory, the block name will be saved there)
+    if ($is_IPTC) { $offset = $this->parse_IPTC_dataset($offset, $dir)
+			while ($offset < $boundary); $dir = $this->{records}; }
+    # less interesting tags are mistreated. However, they should
+    # not pollute the root directory (use the $dir subdirectory)
+    else { $this->store_record($dir,$identifier,$UNDEF,$offset,$data_length); }
+    # if $name is non-trivial, i.e. not the empty string, it (should)
+    # correspond to the resource block description; in any case, it
+    # needs to be remembered (store it in the "extra" field).
+    $this->search_record('LAST_RECORD', $dir)->{extra} = $name if $name ne '';
     # pad, if you need padding ...
     ++$offset if $need_padding;
     # that's it, return the working offset
@@ -1192,10 +1206,11 @@ sub parse_resource_data_block {
 }
 
 ###########################################################
-# This method parses one dataset from an APP13 IPTC re-   #
-# cord. The $offset argument is a pointer in the segment  #
-# data area, which must be returned updated at the end of #
-# the routine. An IPTC record is a sequence of datasets,  #
+# This method parses one dataset from an APP13 IPTC block #
+# and creates a corresponding record in the $dirref subdir#
+# The $offset argument is a pointer in the segment data   #
+# area, which must be returned updated at the end of the  #
+# routine. An IPTC record is a sequence of datasets,      #
 # which need not be in numerical order, unless otherwise  #
 # specified. Each dataset consists of a unique tag and a  #
 # data field. A standard tag is used when the data field  #
@@ -1235,7 +1250,7 @@ sub parse_resource_data_block {
 #      Comité Internat. des Télécommunications de Presse. #
 ###########################################################
 sub parse_IPTC_dataset {
-    my ($this, $offset) = @_;
+    my ($this, $offset, $dirref) = @_;
     # each record is a sequence of variable length data sets read the
     # first four fields (five bytes), and store them in local variables.
     my $marker  = $this->read_record($BYTE , $offset);
@@ -1252,8 +1267,6 @@ sub parse_IPTC_dataset {
     # if $length has the msb set, then we are dealing with an
     # extended dataset. In this case, abort and debug
     die "IPTC extended datasets not yet supported" if $length & (0x01 << 15);
-    # get the subdir reference (create it if it is not there)
-    my $dirref = $this->provide_subdirectory("IPTC_RECORD_2");
     # push a new record reference in the correct subdir. Use the
     # dataset number as identifier, the rest is strightforward
     # (assume that the data type is always ASCII).
@@ -1382,6 +1395,11 @@ sub parse_dht {
 #  4 bits   table class                                   #
 #  4 bits   destination identifier                        #
 #  1 byte   conditioning table value                      #
+#---------------------------------------------------------#
+# It seems the arithmetic coding is covered by three pa-  #
+# tents by three different companies; since its gain over #
+# the Huffman coding scheme is only 5-10%, in practise    #
+# you will never find this segment in your lifetime.      #
 ###########################################################
 # Ref: "Digital compression and coding of continuous-tone #
 #       still images: requirements and guidelines", CCITT #
@@ -1437,7 +1455,6 @@ sub parse_exp {
 ###########################################################
 sub parse_dnl {
     my ($this) = @_;
-    die "dnl";
     # exactly two bytes, plese
     $this->test_size(-2);
     # read the number of lines

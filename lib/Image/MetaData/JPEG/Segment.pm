@@ -21,14 +21,15 @@ BEGIN {
 }
 
 ###########################################################
-# Constructor for a JPEG segment header. It accepts the   #
-# segment type (a multicharacter string, not the marker), #
-# a reference to a raw data buffer and a parse flag. The  #
-# raw buffer is saved internally through its reference    #
-# (no copy is done). If the parse flag does not match     #
-# "NOPARSE", those segments which can be parsed have      #
-# their key-value pairs extracted into the 'records' list #
-# as JPEG::Record objects.                                #
+# JPEG segment header constructor. Its arguments are: a   #
+# reference to a parent entity (a JPEG structure object   #
+# usually, but it can also be undef), the segment type    #
+# (a multicharacter string, not the marker), a reference  #
+# to a raw data buffer and a parse flag. The raw buffer   #
+# is saved internally through its reference (no copy is   #
+# done). If the parse flag does not match "NOPARSE",      #
+# those segments which can be parsed have their key-value #
+# pairs extracted to JPEG::Record's in the 'records' list.#
 #=========================================================#
 # All segments start with four bytes with a common format:#
 #                                                         #
@@ -62,10 +63,16 @@ BEGIN {
 # rewritten to disk as it is.                             #
 ###########################################################
 sub new {
-    my ($pkg, $name, $dataref, $flag) = @_;
+    my ($pkg, $parent, $name, $dataref, $flag) = @_;
+    # die on various error conditions
+    die "Invalid parental link"  unless ! defined $parent  ||   ref $parent;
+    die "Invalid segment name"   unless   defined $name    && ! ref $name;
+    die "Invalid data reference" unless ! defined $dataref ||   ref $dataref;
+    # if $dataref is undef, point it to a *modifiable* empty string
     my $this = bless {
+	parent     => $parent,
 	name       => $name,
-	dataref    => defined $dataref ? $dataref : \ "",
+	dataref    => defined $dataref ? $dataref : \ (my $ns = ''),
 	records    => [],
 	error      => undef,
 	endianness => undef,
@@ -104,32 +111,36 @@ sub parse {
     # so that errors are not fatal...
     eval {
 	# if $flag matches "NOPARSE", we don't need to parse
-	# the segment. This can be done by generating an error
-	die "Not parsed due to user request" if $flag && $flag =~ /NOPARSE/;
-	# parse all informative tags
-	$this->parse_com()   if $this->{name} eq 'COM';   # User comments
-	$this->parse_app0()  if $this->{name} eq 'APP0';  # JFIF
-	$this->parse_app1()  if $this->{name} eq 'APP1';  # Exif or XMP
-	$this->parse_app2()  if $this->{name} eq 'APP2';  # FPXR or ICC_Prof
-	$this->parse_app3()  if $this->{name} eq 'APP3';  # Additonal metadata
-	$this->parse_unknown() if $this->{name} eq 'APP4';  # HPSC
-	$this->parse_unknown() if $this->{name} =~ /APP(5|6|7|8|9|10|11|15)/;
-	$this->parse_app12() if $this->{name} eq 'APP12'; # PreExif ascii meta
-	$this->parse_app13() if $this->{name} eq 'APP13'; # IPTC and Photoshop
-	$this->parse_app14() if $this->{name} eq 'APP14'; # Adobe tags
-	# parse all JPEG image tags (SOI, EOI and RST* are trivial)
-	$this->parse_dqt()   if $this->{name} eq 'DQT';
-	$this->parse_dht()   if $this->{name} eq 'DHT';
-	$this->parse_dac()   if $this->{name} eq 'DAC';
-	$this->parse_sof()   if $this->{name} =~ /^SOF|DHP/;
-	$this->parse_sos()   if $this->{name} eq 'SOS';
-	$this->parse_dnl()   if $this->{name} eq 'DNL';
-	$this->parse_dri()   if $this->{name} eq 'DRI';
-	$this->parse_exp()   if $this->{name} eq 'EXP';
+	goto STOP_PARSING if ($flag && $flag =~ /NOPARSE/);
+        # this is a stupid Perl-style switch
+	for ($this->{name}) {
+	    # parse all informative tags
+	    $_ eq 'COM'   ? $this->parse_com()     : # User comments
+	    $_ eq 'APP0'  ? $this->parse_app0()    : # JFIF
+	    $_ eq 'APP1'  ? $this->parse_app1()    : # Exif or XMP
+	    $_ eq 'APP2'  ? $this->parse_app2()    : # FPXR or ICC_Prof
+	    $_ eq 'APP3'  ? $this->parse_app3()    : # Additonal metadata
+	    $_ eq 'APP4'  ? $this->parse_unknown() : # HPSC
+	    $_ eq 'APP12' ? $this->parse_app12()   : # PreExif ascii meta
+	    $_ eq 'APP13' ? $this->parse_app13()   : # IPTC and Photoshop
+	    $_ eq 'APP14' ? $this->parse_app14()   : # Adobe tags
+	    # parse all JPEG image tags (SOI, EOI and RST* are trivial)
+	    /^(SOI|EOI|RST)$/ ? do { /nothing/ }   :
+	    $_ eq 'DQT'   ? $this->parse_dqt()     :
+	    $_ eq 'DHT'   ? $this->parse_dht()     :
+	    $_ eq 'DAC'   ? $this->parse_dac()     :
+	    /^SOF|DHP/    ? $this->parse_sof()     :
+	    $_ eq 'SOS'   ? $this->parse_sos()     :
+	    $_ eq 'DNL'   ? $this->parse_dnl()     :
+	    $_ eq 'DRI'   ? $this->parse_dri()     :
+	    $_ eq 'EXP'   ? $this->parse_exp()     :
+	    # this is the fallback case
+	    $this->parse_unknown(); };
+      STOP_PARSING: 
     };
     # parsing was ok if no error was catched by the eval.
     # Update the "error" member here to reflect this fact.
-    $this->{error} = $@;
+    $this->{error} = $@ if $@;
     # reset the default endianness to undef
     $this->{endianness} = undef;
 }
@@ -165,13 +176,15 @@ sub reparse_as {
 sub update {
     my ($this) = @_;
     # if the segment was not correctly parsed, warn and return
-    return warn "A segment with errors cannot be modified" if $this->{error};
+    die 'Update error: faulty segment' if $this->{error};
+    # this might come also from 'NOPARSE'
+    die 'Update error: no records' if scalar @{$this->{records}} == 0;
     # call a more specific routine
     return $this->dump_com()   if $this->{name} eq 'COM';
     return $this->dump_app1()  if $this->{name} eq 'APP1';
     return $this->dump_app13() if $this->{name} eq 'APP13';
     # the other segments are still unhandled (SOI, EOI and RST* are trivial)
-    warn "Updating $this->{name} not yet implemented";
+    die "Updating $this->{name} not yet implemented";
 }
 
 ###########################################################
@@ -199,17 +212,18 @@ sub output_segment_data {
     my $length   = $this->size();
     # the segment lenght must be written to a two bytes field (including
     # the two bytes themselves). So, the maximum value of $length is
-    # 2^16 - 3. Check and issue a warning in case it is larger. Do not
-    # run the check for raw data or past-the-end data.
+    # 2^16 - 3. Check and throw an exception in case it is larger.
+    # Do not run the check for raw data or past-the-end data.
     my $max_length = 2**16 - 3;
-    if ($length > $max_length && $name !~ /ECS|Post-EOI/) {
-	warn sprintf "Segment %s too large (len=%d, max=%d), skipping ...",
-	$this->{name}, $length, $max_length; return 0; }
+    die sprintf("Segment %s too large (len=%d, max=%d), skipping ...",
+		$this->{name}, $length, $max_length)
+	if $length > $max_length && $name !~ /ECS|Post-EOI/;
     # prepare the segment header (skip for raw data segments)
     my $preamble = ( $name =~ /ECS|Post-EOI/ ? "" :
 		     pack("CC", $JPEG_PUNCTUATION, $JPEG_MARKER{$name}) );
     # prepare the length word (skip for segments not needing it)
-    $preamble .= pack("n", 2 + $length) unless $name =~ /SOI|EOI|RST|ECS/;
+    $preamble .= pack("n", 2 + $length)
+	unless $name =~ /SOI|EOI|RST|ECS|Post-EOI/;
     # output the preamble and the data buffer (return the status)
     return print {$out} $preamble, $this->data(0, $length);
 }
@@ -333,42 +347,84 @@ sub data { substr(${$_[0]{dataref}}, $_[1], $_[2]); }
 ###########################################################
 sub set_data {
     my ($this, $addenda, $action) = @_;
-    # get a reference to the current data area
-    my $dataref = $this->{dataref};
+    # clear the current buffer if so requested; set the reference
+    # to a variable containing the null string, not to the null
+    # string directly, which is unmodifiable.
+    $this->{dataref} = \ (my $ns = '') if $action && $action eq 'OVERWRITE';
     # get a reference to new data (remember that the
     # first argument can be a scalar or a scalar reference)
     my $addref = (ref $addenda) ? $addenda : \$addenda;
-    # clear the current buffer if so requested
-    $$dataref = "" if defined $action && $action eq 'OVERWRITE';
     # append the new data through the ref
-    $$dataref .= $$addref;
+    ${$this->{dataref}} .= $$addref;
     # return the amount of appended data
     return length $$addref;
 }
 
 ###########################################################
-# This method returns the first record, with a key equal  #
-# to a given string, in the record directory specified    #
-# by the record list reference $records; if the second    #
-# argument is not defined, it defaults as usual to        #
-# $this->{records}. If successful, the method returns a   #
-# reference to the record itself.                         #
-# ======================================================= #
+# This method searches for a record with a given key in a #
+# given record directory, returning a reference to the    #
+# record if the search was fruitful, undef otherwise.     #
+# The search is specified as follows:                     #
+#  1) a start directory is chosen by looking at the last  #
+#     argument: if it is an ARRAY ref it is popped out    #
+#     and used, otherwise the top-level directory (i.e.,  #
+#     $this->{records}) is selected;                      #
+#  2) a $keystring is created by joining all remaining    #
+#     arguments on '@', then this string is exploded into #
+#     a @keylist on the same character;                   #
+#  3) these keys are used for an iterative search start-  #
+#     ing from the initially chosen directory: all but    #
+#     the last key must correspond to $REFERENCE records. #
+# ------------------------------------------------------- #
 # If $key is exactly "FIRST_RECORD" / "LAST_RECORD", the  #
-# first/last record in the appropriate list is returned.  #
+# first/last record in the current directory is selected. #
 ###########################################################
 sub search_record {
-    my ($this, $key, $records) = @_;
-    # fix the record list reference if undefined
-    $records = $this->{records} unless defined $records;
-    # reserved key "FIRST_RECORD" returns the first record
-    return $$records[0] if $key eq "FIRST_RECORD";
-    # reserved key "LAST_RECORD" returns the last record
-    return $$records[$#$records] if $key eq "LAST_RECORD";
-    # scan the list and return a reference to the first matching record
-    foreach (@$records) { return $_ if $_->{key} eq $key; }
-    # return "undefined" if the search was unsuccessful
-    return undef;
+    my $this = shift;
+    # return immediately if @_ is empty
+    return undef unless @_;
+    # initialise the search directory: use the last argument if
+    # it is an array reference, the top-level directory otherwise
+    my $directory = ref $_[$#_] eq 'ARRAY' ? pop : $this->{records};
+    # delete the last argument if it is undefined (in practise, you
+    # can use a dirref initially set to undef for an interative search)
+    pop unless defined $_[$#_];
+    # reset the searched $record
+    my $record = undef;
+    # join all remaining arguments
+    my $keystring = join('@', @_);
+    # split the resulting string on '@'
+    my @keylist = split('@', $keystring);
+    # search iteratively with all elements in @keylist
+    for my $key (@keylist) {
+	# exit the loop as soon as a key is undefined
+	($record = undef), last unless $key;
+	# update the current $record
+	$record =
+	    # reserved key "FIRST_RECORD" returns first record
+	    $key eq "FIRST_RECORD" ? $$directory[0] :
+	    # reserved key "LAST_RECORD" returns last record
+	    $key eq "LAST_RECORD" ? $$directory[$#$directory] :
+	    # standard search (get first matching record or undef)
+	    ((grep { $_->{key} eq $key } @$directory), undef)[0];
+	# stop if $record is undefined or is not a $REFERENCE
+	last unless $record && $record->get_category() eq 'p';
+	# update $directory for next search
+	$directory = $record->get_value(); }
+    # return the search result
+    return $record;
+}
+
+###########################################################
+# A simple wrapper around search_record(): it returns the #
+# record value if the search is ok, undef otherwise.      #
+###########################################################
+sub search_record_value {
+    my $this = shift;
+    # call search_record passing all arguments through
+    my $record = $this->search_record(@_);
+    # return the record value if record is defined
+    return $record ? $record->get_value() : undef;
 }
 
 ###########################################################
@@ -376,7 +432,8 @@ sub search_record {
 # subdirectory, in a given record list. The two arguments #
 # are the name of the subdirectory (a string) and a refe- #
 # rence to a record list; if the second argument is not   #
-# defined, it defaults to $this->{records}.               #
+# defined, it defaults to $this->{records}. If the subdir #
+# entry is not there, it is created on the fly.           #
 ###########################################################
 sub provide_subdirectory {
     my ($this, $dirname, $records) = @_;

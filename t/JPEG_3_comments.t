@@ -6,12 +6,11 @@ use Image::MetaData::JPEG;
 my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
-my $cphoto = 't/test_photo_copy.jpg';
 my $limit  = 2**16 - 3;
 my $com2   = 'x' x $limit;
 my $com3   = 'x' x ($limit + 1);
 my $com4   = "Regular comment";
-my ($image, $newim, @list, $num, @savelist, @sl);
+my ($image, $newim, @list, $num, @savelist, @sl, $bufferref);
 
 my $reduce = sub {
     @{$_[0]} = map {(length $_ > $limit) ? (substr($_,0,$limit),
@@ -19,7 +18,7 @@ my $reduce = sub {
 
 #===============================
 diag "Testing comment routines";
-plan tests => 20;
+plan tests => 24;
 #===============================
 
 #########################
@@ -102,25 +101,40 @@ $image->join_comments("***");
 is_deeply( \@list, \@sl, "Total joining" );
 
 #########################
+eval { $image->join_comments("-", 0, 2, -4) };
+isnt( $@, '', "Negative index in join_comments catched" );
+
+#########################
+eval { $image->join_comments("-", 0, 114, 2) };
+isnt( $@, '', "Out-of-bound index in join_comments catched" );
+
+#########################
+eval { $image->join_comments("-", undef, 0) };
+isnt( $@, '', "Undefined index in join_comments catched" );
+
+#########################
+eval { $image->join_comments("-", 'invalid', 2, 4) };
+isnt( $@, '', "Invalid index in join_comments catched" );
+
+#########################
 $image->remove_all_comments();
 $image->add_comment($_) for @savelist; $num = @savelist;
-$image->save($cphoto);
-$newim = $cname->new($cphoto);
+$bufferref = \ "dummy";
+$image->save($bufferref);
+$newim = $cname->new($bufferref);
 @list = $newim->get_comments();
-unlink $cphoto;
 is_deeply( \@list, \@savelist, "Save and re-read" );
 
 #########################
 $image->remove_all_comments();
 $image->add_comment("Dummy");
 $image->set_comment(0, "");
-$image->save($cphoto);
-$newim = $cname->new($cphoto);
+$image->save($bufferref);
+$newim = $cname->new($bufferref);
 ok( $newim, "Saving a picture with a null comment" );
 
 #########################
 @list = $newim->get_comments();
-unlink $cphoto;
 is_deeply( \@list, [ "" ], "The comment is really null" );
 
 ### Local Variables: ***

@@ -11,7 +11,7 @@ no  integer;
 use strict;
 use warnings;
 
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 ###########################################################
 # Load other parts for this package. In order to avoid    #
@@ -40,11 +40,11 @@ BEGIN {
 # with a positive match are parsed. This allows for some  #
 # speed-up if you just need partial information. For      #
 # instance, if you just want to manipulate the comments,  #
-# you could use $regex equal to "COM". If $regex is unde- #
+# you could use $regex equal to 'COM'. If $regex is unde- #
 # fined, all segments are matched.                        #
 # ------------------------------------------------------- #
 # There is now a third optional argument, $options. If it #
-# matches the string "FASTREADONLY", only those segments  #
+# matches the string 'FASTREADONLY', only those segments  #
 # matching $regex are actually stored; also, everything   #
 # which is found after a Start Of Scan is completely      #
 # neglected. This allows for very large speed-ups, but,   #
@@ -72,9 +72,9 @@ sub new {
     # execute the following subroutines in an eval block so that
     # errors can be treated without shutting down the caller.
     my $status = eval { $this->open_input($file_input); 
-			$this->parse_segments($regex);     };
+			$this->parse_segments($regex) ; };
     # close the file handle, if open
-    close_input();
+    $this->close_input();
     # If an error was found (and it triggered a die call)
     # we must set the appropriate error variable here
     $pkg->SetError($@) unless $status;
@@ -95,11 +95,14 @@ sub new {
 
 ###########################################################
 # This method writes the data area of each segment in the #
-# current object to a disk file. If the filename is undef,#
-# it defaults to the file originally used to create this  #
-# JPEG structure object. This method returns "true" (1)   #
-# if it works, "false" (undef) otherwise. This call fails #
-# if the "read_only" member is set.                       #
+# current object to a disk file or a variable in memory.  #
+# A disk file is written if $filename is a scalar with a  #
+# valid file name; memory is instead used if $filename is #
+# a scalar reference. If $filename is undef, it defaults  #
+# to the file originally used to create the current JPEG  #
+# structure object. This method returns "true" (1) if it  #
+# works, "false" (undef) otherwise. This call fails if    #
+# the "read_only" member is set.                          #
 # ------------------------------------------------------- #
 # Remember that if you make changes to any segment, you   #
 # should call update() for that particular segment before #
@@ -115,19 +118,19 @@ sub save {
     return undef if $this->{read_only};
     # if $filename is undefined, it defaults to the original name
     $filename = $this->{filename} unless defined $filename;
-    # Open an IO handler for output on a file named $filename.
+    # Open an IO handler for output on a file named $filename
+    # or on an in-memory variable pointed to by $filename.
     # Use an indirect handler, which is closed authomatically
     # when it goes out of scope (so, no need to call close()).
-    # If open fails, it return false and sets the special
-    # variable $! to reflect the system error. Legacy systems
-    # might need an explicity binary open.
-    open(my $out, ">", $filename) || return undef;
+    # If open fails, it returns false and sets the special
+    # variable $! to reflect the system error.
+    open(my $out, '>', $filename) || return undef;
+    # Legacy systems might need an explicit binary open.
     binmode($out);
     # For each segment in the segment list, write the content of
     # the data area (including the preamble when needed) to the
-    # disk file. Save the results of each output for later testing.
-    my $segments = $this->{segments};
-    my @results = map { $_->output_segment_data($out) } @$segments;
+    # IO handler. Save the results of each output for later testing.
+    my @results = map { $_->output_segment_data($out) } @{$this->{segments}};
     # return undef if any print failed, true otherwise
     return (scalar grep { ! $_ } @results) ? undef : 1;
 }
@@ -143,17 +146,17 @@ sub save {
 sub open_input {
     my ($this, $file_input) = @_;
     # protect against undefined values
-    die "Undefined input" unless defined $file_input;
+    die 'Undefined input' unless defined $file_input;
     # scalar references: save the reference in $this->{handle}
     # and save a self-explicatory string as file name
-    if (ref $file_input) {
+    if (ref $file_input eq 'SCALAR') {
 	$this->{handle}   = $file_input;
-	$this->{filename} = "[in-memory JPEG stream]"; }
+	$this->{filename} = '[in-memory JPEG stream]'; }
     # real file: we need to open the file and complain if this is
     # not possible (legacy systems might need an explicity binary
     # open); then, the file name of the original file is saved.
     else {
-	open($this->{handle}, "<", $file_input) ||
+	open($this->{handle}, '<', $file_input) ||
 	    die "Open error on $file_input: $!";
 	binmode($this->{handle});
 	$this->{filename} = $file_input; }
@@ -161,14 +164,17 @@ sub open_input {
 
 ###########################################################
 # This method is the counterpart of "open". Actually, it  #
-# does something only for real files (because in-memory   #
-# scalars do not need being closed ....).                 #
+# does something only for real files (because we do not   #
+# want to close in-memory scalars ....).                  #
 ###########################################################
 sub close_input {
     my ($this) = @_;
-    return if ref $this->{handle} ne 'GLOB';
-    close $this->{handle}
-    if ref $this->{handle} && defined fileno $this->{handle};
+    # $this->{handle} should really be a reference to something
+    return unless ref $this->{handle};
+    # a ref to a scalar: we do not want to close in-memory scalars
+    return if ref $this->{handle} eq 'SCALAR';
+    # the default action corresponds to closing the filehandle
+    close $this->{handle};
 }
 
 ###########################################################
@@ -185,12 +191,12 @@ sub get_data {
     # a shorter name for the file handle
     my $handle = $this->{handle};
     # understand if this is a file or a scalar reference
-    my $is_file = ref $handle eq "GLOB";
-    # if the first argument is just the string "LENGTH",
+    my $is_file = ref $handle eq 'GLOB';
+    # if the first argument is just the string 'LENGTH',
     # return the input length instead
-    return ($is_file ? -s $handle : length $$handle) if $offset eq "LENGTH";
+    return ($is_file ? -s $handle : length $$handle) if $offset eq 'LENGTH';
     # this is the buffer to be returned at the end
-    my $data = "";
+    my $data = '';
     # if length is <= zero return a reference to an empty string
     return \ $data if $length <= 0;
     # if we are dealing with a real file, we need to seek to the
@@ -250,40 +256,41 @@ sub parse_segments {
     my ($this, $regex) = @_;
     # prepare another hash to reverse the JPEG markers lookup
     my %JPEG_MARKER_BY_CODE = reverse %JPEG_MARKER;
-    # prepare a reference pointing to the "segments" list
-    my $segments = $this->{segments};
     # an offset in the input object, and a variable with its size
     my $offset = 0;
-    my $isize  = $this->get_data("LENGTH");
+    my $isize  = $this->get_data('LENGTH');
+    # don't claim empty files are valid JPEG pictures
+    die 'Empty file' unless $isize;
     # loop on input data and find all of its segment
     while ($offset < $isize) {
 	# search for the next JPEG marker, giving the segment type
 	(my $marker, $offset) = $this->get_next_marker($offset);
 	# Die on unknown markers
-	die sprintf "Unknown marker found: 0x%02x (offset $offset)", $marker
+	die sprintf 'Unknown marker found: 0x%02x (offset $offset)', $marker
 	    unless exists $JPEG_MARKER_BY_CODE{$marker};
 	# save the current offset (beginning of data)
 	my $start = $offset;
 	# calculate the name of the marker
 	my $name = $JPEG_MARKER_BY_CODE{$marker};
 	# determine the parse flag
-	my $flag = ($regex && $name !~ /$regex/) ? "NOPARSE" : undef;
+	my $flag = ($regex && $name !~ /$regex/) ? 'NOPARSE' : undef;
 	# SOI, EOI and ReSTart are dataless segments
 	my $length = 0; goto DECODE_LENGTH_END if $name =~ /^RST|EOI|SOI/;
       DECODE_LENGTH_START:
 	# decode the length of this application block (2 bytes).
 	# This is always in big endian ("Motorola") style, that
 	# is the first byte is the most significant one.
-	$length = unpack "n", ${$this->get_data($offset, 2)};
+	$length = unpack 'n', ${$this->get_data($offset, 2)};
 	# the segment length includes the two aforementioned
 	# bytes, so the length must be at least two
-	die "JPEG segment too small" if $length < 2;
+	die 'JPEG segment too small' if $length < 2;
       DECODE_LENGTH_END:
 	# pass the data to a segment object and store it, unless
 	# the "read_only" member is set and $flag is "NOPARSE".
 	# (don't pass $flag to dataless segments, it is just silly).
-	push @$segments, new Image::MetaData::JPEG::Segment
-	    ($name, $this->get_data($start + 2, $length - 2),
+	# (remember about the new 'parental' argument in Segment's ctor)
+	push @{$this->{segments}}, new Image::MetaData::JPEG::Segment
+	    ($this, $name, $this->get_data($start + 2, $length - 2),
 	     $length ? $flag : undef) unless $this->{read_only} && $flag;
 	# update offset
 	$offset += $length;
@@ -299,10 +306,11 @@ sub parse_segments {
 	# itself after the EOI segment, as well as undocumented binary
 	# and ascii data. Save them in a pseudo-segment, so that they
 	# can be restored (take "read_only" into account).
-	if ($name eq "EOI" && $offset < $isize) {
+	# (remember about the new 'parental' argument in Segment's ctor)
+	if ($name eq 'EOI' && $offset < $isize) {
 	    my $len = $isize - $offset;
-	    push @$segments, new Image::MetaData::JPEG::Segment
-		("Post-EOI data", $this->get_data($offset, $len))
+	    push @{$this->{segments}}, new Image::MetaData::JPEG::Segment
+		($this, 'Post-EOI', $this->get_data($offset, $len), 'NOPARSE')
 		unless $this->{read_only};
 	    $offset += $len;
 	}
@@ -331,7 +339,7 @@ sub get_next_marker {
     # it is assumed that we are at the beginning of
     # a new segment, so the next byte must be 0xff.
     my $marker_byte = ${$this->get_data($offset++, 1)};
-    die sprintf("Unknown punctuation (0x%02x) at offset 0x%x",
+    die sprintf('Unknown punctuation (0x%02x) at offset 0x%x',
 		ord($marker_byte), $offset) if $marker_byte ne $punctuation;
     # next byte can be either the marker type or a padding
     # byte equal to 0xff (skip it if it's a padding byte)
@@ -367,8 +375,8 @@ sub get_next_marker {
 ###########################################################
 sub parse_ecs {
     my ($this, $offset) = @_;
-    # A title for a raw data block ("ECS" must be there)
-    my $ecs_name = "ECS (Raw data)";
+    # A title for a raw data block ('ECS' must be there)
+    my $ecs_name = 'ECS (Raw data)';
     # transform the JPEG punctuation value into a string
     my $punctuation = chr $JPEG_PUNCTUATION;
     # create a string containing the character which can follow a
@@ -379,7 +387,7 @@ sub parse_ecs {
     my $skipstring = $punctuation . chr 0x00;
     $skipstring .= chr $_ for ($JPEG_MARKER{RST0} .. $JPEG_MARKER{RST7});
     # read in everything till the end of the input
-    my $length = $this->get_data("LENGTH");
+    my $length = $this->get_data('LENGTH');
     my $buffer = $this->get_data($offset, $length - $offset);
     # find the next 0xff byte not followed by a character of $skipstring
     # from $offset on. It is better to use pos() instead of taking a
@@ -389,11 +397,12 @@ sub parse_ecs {
     pos($$buffer) = 0; scalar $$buffer =~ /$punctuation[^$skipstring]/g;
     # trim the $buffer at the byte before the punctuation mark; the
     # position of the last match can be accessed through pos()
-    die "ECS parsing failed" unless pos($$buffer);
-    substr($$buffer, pos($$buffer) - 2) = "";
-    # push a pseudo segment among the regular ones
-    my $segments = $this->{segments};
-    push @$segments, new Image::MetaData::JPEG::Segment($ecs_name, $buffer);
+    die 'ECS parsing failed' unless pos($$buffer);
+    substr($$buffer, pos($$buffer) - 2) = '';
+    # push a pseudo segment among the regular ones (of course, do not parse
+    # it) (remember about the new 'parental' argument in Segment's ctor)
+    push @{$this->{segments}}, new Image::MetaData::JPEG::Segment
+	($this, $ecs_name, $buffer, 'NOPARSE');
     # return the updated offset
     return $offset + length $$buffer;
 }
@@ -401,7 +410,7 @@ sub parse_ecs {
 ###########################################################
 # This method creates a list containing the references    #
 # (or their indexes in the segment references list, if    #
-# the second argument is "INDEXES") of those segments     #
+# the second argument is 'INDEXES') of those segments     #
 # whose name matches a given regular expression.          #
 # The output can be invalid after adding/removing any     #
 # segment. If $regex is undefined or evaluates to the     #
@@ -409,19 +418,83 @@ sub parse_ecs {
 ###########################################################
 sub get_segments {
     my ($this, $regex, $do_indexes) = @_;
-    # fix the regular expression to "." if undefined or set to the
+    # fix the regular expression to '.' if undefined or set to the
     # empty string. I do this because I want to avoid the stupid
     # behaviour of m//; from `man perlop`: if the pattern evaluates
     # to the empty string, the last successfully matched regular
     # expression is used instead; if no match has previously succeeded,
     # this will (silently) act instead as a genuine empty pattern
-    $regex = "." unless defined $regex && length $regex > 0;
+    $regex = '.' unless defined $regex && length $regex > 0;
     # get the list of segment references in this file
     my $segments = $this->{segments};
     # return the list of matched segments
-    return (defined $do_indexes && $do_indexes eq "INDEXES") ?
+    return (defined $do_indexes && $do_indexes eq 'INDEXES') ?
 	grep { $$segments[$_]->{name} =~ /$regex/ } 0..$#$segments :
 	grep { $_->{name} =~ /$regex/ } @$segments;
+}
+
+###########################################################
+# This method erases from the internal segment list all   #
+# segments matching the $regex regular expression. If     #
+# $regex is undefined or evaluates to the empty string,   #
+# this method throws an exception, because I don't want   #
+# the user to erase the whole file just because he/she    #
+# did not understand what he was doing. The apocalyptic   #
+# behaviour can be forced by setting $regex = '.'. One    #
+# must remember that it is not wise to drop non-metadata  #
+# segments, because this in general invalidates the file. #
+# As a special case, if $regex == 'METADATA', all APP*    #
+# and COM segments are erased.                            #
+###########################################################
+sub drop_segments {
+    my ($this, $regex) = @_;
+    # refuse to work with empty or undefined regular expressions
+    die 'drop_segments: you must specify a regular expression'
+	unless defined $regex && length $regex > 0;
+    # if $regex is 'METADATA', convert it
+    $regex = '^(APP\d{1,2}|COM)$' if $regex eq 'METADATA';
+    # rewrite the segment list keeping only segments not matching
+    # $regex (see get_segments for further considerations).
+    @{$this->{segments}} = 
+	grep { $_->{name} !~ /$regex/ } @{$this->{segments}};
+}
+
+###########################################################
+# This method inserts the segments referenced by $segref  #
+# into the current list of segments at position $pos. If  #
+# $segref is undefined, the method fails silently. If     #
+# $pos is undefined, the position is chosen automatically #
+# (using find_new_app_segment_position); if $pos is out   #
+# of bound, an exception is thrown; this happens also if  #
+# $pos points to the first segment, and it is SOI.        #
+# $segref may be a reference to a single segment or a     #
+# reference to a list of segment references; everything   #
+# else throws an exception. If overwrite is defined, it   #
+# must be the number of segs to overwrite during splice.  #
+###########################################################
+sub insert_segments {
+    my ($this, $segref, $pos, $overwrite) = @_;
+    # do nothing if $segref is undefined or is not a reference
+    return unless ref $segref;
+    # segref may be a reference to a segment or a reference
+    # to a list; we must turn it into a reference to a list
+    $segref = [ $segref ] unless ref $segref eq 'ARRAY';
+    # check that all elements in the list are segment references
+    ref $_ eq 'Image::MetaData::JPEG::Segment' ||
+	die 'insert_segments: dying on a non-segment ref' for @$segref;
+    # calculate a convenient position if the user neglects to
+    $pos = $this->find_new_app_segment_position() unless defined $pos;
+    # fail if $pos is negative or out-of-bound;
+    die "insert_segments: out-of-bound position $pos"
+	if $pos < 0 || $pos >= scalar @{$this->{segments}}; 
+    # fail if $pos points to the first segment and it is SOI
+    die "insert_segments: you cannot insert on start-of-image"
+	if $pos == 0 && $this->{segments}->[0]->{name} eq 'SOI';
+    # do the actual insertion (one or multiple segments);
+    # if overwrite is defined, it must be the number of
+    # segments to overwrite during the splice.
+    $overwrite = 0 unless defined $overwrite;
+    splice @{$this->{segments}}, $pos, $overwrite, @$segref;
 }
 
 ###########################################################
@@ -442,12 +515,12 @@ sub find_new_app_segment_position {
     my $safe = sub { ($last_segment < $_[0]) ? $last_segment : $_[0] };
     # get the indexes of the DHP segments; if this list
     # is not void, return its position
-    return &$safe($_) for $this->get_segments("DHP", "INDEXES");
+    return &$safe($_) for $this->get_segments('DHP', 'INDEXES');
     # same thing with SOF segments
-    return &$safe($_) for $this->get_segments("SOF", "INDEXES");
+    return &$safe($_) for $this->get_segments('SOF', 'INDEXES');
     # otherwise, get the indexes of all application and comment
     # segments, and return the position after the last one.
-    return &$safe(1+$_) for reverse $this->get_segments("APP|COM", "INDEXES");
+    return &$safe(1+$_) for reverse $this->get_segments('APP|COM', 'INDEXES');
     # if even this fails, try after start-of-image (just in order
     # to avoid a warning for half-read files with not even two
     # segments (they cannot be saved), return 0 if necessary)

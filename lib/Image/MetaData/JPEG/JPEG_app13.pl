@@ -11,33 +11,45 @@ use strict;
 use warnings;
 
 ###########################################################
-# $IPTC_subdir_name is the name of the IPTC subdirectory  #
-# record in the main record directory of an APP13 segment.#
-# The two hashes are fast lookup tables for numeric to    #
-# textual and back tag translations.                      #
+# These helper functions have a single argument. They fix #
+# it to some standard value, if it is undefined, then     #
+# they check that its value is a legal string and throw   #
+# an exception out if not so.                             #
 ###########################################################
-my $IPTC_subdir_name = 'IPTC_RECORD_2';
-my %IPTC_tags        = %{JPEG_lookup('APP13', $IPTC_subdir_name)};
-my %IPTC_names       = reverse %IPTC_tags;
+my $sanitise_what   = sub {$_[0] = 'IPTC' unless defined $_[0];
+			   ($_[0] =~ /^(PHOTOSHOP|IPTC)$/) ?
+			       return 1 : die 'Unknown "what": '.$_[0]; };
+my $sanitise_type   = sub {$_[0] = 'TEXTUAL' unless defined $_[0];
+			   ($_[0] =~ /^(NUMERIC|TEXTUAL)$/) ?
+			       return 1 : die 'Unknown "type": '.$_[0]; };
+my $sanitise_action = sub {$_[0] = 'REPLACE' unless defined $_[0];
+			   ($_[0] =~ /^(ADD|UPDATE|REPLACE)$/) ?
+			       return 1 : die 'Unknown "action": '.$_[0]; };
+my $subdir_name = sub { return $APP13_IPTC_DIRNAME if $_[0] eq 'IPTC';
+		        return $APP13_PHOTOSHOP_DIRNAME if $_[0]eq 'PHOTOSHOP';
+		        die 'Invalid "what" '.$_[0]; };
 
 ###########################################################
-# This method finds the $index-th APP13 segment WITH IPTC #
-# information in the file, and returns its reference. If  #
-# $index is undefined, it defaults to zero (i.e., first   #
-# segment). If no such segment exists, it returns undef.  #
-# If $index is (-1), the routine returns the number of    #
-# available APP13 IPTC segments (which is >= 0).          #
+# This method returns a reference to the $index-th (the   #
+# first, if $index is undefined) Photoshop-like APP13     #
+# segment which contains information matching the $what   #
+# argument ($what can be only 'IPTC' or 'PHOTOSHOP', the  #
+# former being the default). If $index is undefined, it   #
+# defaults to zero (i.e., first segment). If the required #
+# segment does not exist, undef is returned. If $index is #
+# (-1), this method returns the number of available       #
+# suitable APP13 segments (which is >= 0). If $what is    #
+# invalid, an exception is thrown. Beware!, the meaning   #
+# of $index is influenced by the value of $what.          #
 ###########################################################
-sub retrieve_app13_IPTC_segment {
-    my ($this, $index) = @_;
-    # prepare the segment reference to be returned
-    my $chosen_segment = undef;
+sub retrieve_app13_segment {
+    my ($this, $index, $what) = @_;
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
     # $index defaults to zero if undefined
     $index = 0 unless defined $index;
-    # get the references of all APP13 segments
-    my @references = $this->get_segments('APP13');
-    # filter out those without IPTC information
-    @references = grep { $_->is_app13_IPTC() } @references;
+    # select all segments compatible with $what
+    my @references = grep { $_->is_app13_ok($what) } $this->get_segments();
     # if $index is -1, return the size of @references
     return scalar @references if $index == -1;
     # return the $index-th such segment, or undef if absent
@@ -45,132 +57,126 @@ sub retrieve_app13_IPTC_segment {
 }
 
 ###########################################################
-# This method forces an APP13 segment with IPTC info to   #
-# be present in the file, and returns its reference. The  #
-# algorithm is the following: 1) if at least one segment  #
-# with these properties is already present, the first one #
-# is returned; 2) if [1] fails, but at least one APP13    #
-# segment exists, an IPTC subdirectory is created and     #
-# initialised inside it (+ update), and the segment refe- #
-# rence is returned; 3) if also [2] fails, an APP13 seg-  #
-# ment is added and initialised, and [2] is applied.      #
+# This method forces an appropriate Photoshop-like APP13  #
+# segment to be present in the file, and returns its      #
+# reference. If at least one segment matching $what is    #
+# already present, the first one is returned. Otherwise,  #
+# the first Photoshop-like APP13 is adapted by inserting  #
+# an appropriate subdirectory record (update() is called  #
+# automatically). If not such segment exists, it is first #
+# created and inserted. $what defaults to 'IPTC' if unde- #
+# fined. If $what is invalid, an exception is thrown.     #
 ###########################################################
-sub provide_app13_IPTC_segment {
-    my ($this) = @_;
-    # get the references of all APP13 segments
-    my @app13_refs = $this->get_segments('APP13');
-    # filter out those without IPTC information
-    my @IPTC_refs = grep { $_->is_app13_IPTC() } @app13_refs;
-    # if @IPTC_refs is not empty, return the first segment
-    return $IPTC_refs[0] if @IPTC_refs;
-    # if it is empty, get a reference to the first segment
-    # in @app13_refs (undef, if even this is empty)
-    my $app13 = @app13_refs ? $app13_refs[0] : undef;
-    # if $app13 is defined, skip the following lines, where
-    # an APP13 segment is built, initialised and stored in
-    # an appropriate position in the file
-    unless (defined $app13) {
-	# remember that at least the Photoshop string must be there
-	$app13 = new Image::MetaData::JPEG::Segment
-	    ('APP13', \ "$APP13_PHOTOSHOP_IDENTIFIER");
-	# choose a position for the new segment
-	my $position = $this->find_new_app_segment_position();
-	# get the list of segments in the file
-	my $segments = $this->{segments};
-	# actually insert the segment
-	splice @$segments, $position, 0, $app13; }
-    # now, $app13 is a valid APP13 segment reference, and there
-    # is no IPTC subdirectory inside it. Provide it. Then return.
-    $app13->provide_IPTC_subdirectory();
-    return $app13;
+sub provide_app13_segment {
+    my ($this, $what) = @_;
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
+    # get the list of segments selected by $what
+    my @what_refs = grep { $_->is_app13_ok($what) } $this->get_segments();
+    # if the list is not empty, return the first element
+    return $what_refs[0] if @what_refs;
+    # get the list of Photoshop-like segments (this only looks
+    # for the Photoshop identifier, special case of $what = undef);
+    # then extract the first element.
+    my @refs = grep { $_->is_app13_ok(undef) } $this->get_segments();
+    my $app13_segment = @refs ? $refs[0] : undef;
+    # if no segment is found, we surely need to generate a new
+    # one, and store it in an appropriate position in the file;
+    # remember that at least the Photoshop string must be there
+    # (and remember about the 'parent' link as first argument)
+    unless ($app13_segment) {
+	$app13_segment = new Image::MetaData::JPEG::Segment
+	    ($this, 'APP13', \ "$APP13_PHOTOSHOP_IDENTIFIER");
+	# insert it into the list of JPEG segments
+	# (the position is chosen automatically)
+	$this->insert_segments($app13_segment); }
+    # ok, we must adapt the Photoshop-like segment (automatic update())
+    $app13_segment->provide_app13_subdir($what);
+    # return the modified segment
+    return $app13_segment;
 }
 
 ###########################################################
-# This method eliminates all traces of IPTC information   #
-# from the $index-th APP13 IPTC segment. If, after this,  #
-# the segment is empty, it is eliminated from the list of #
-# segments in the file. If $index is (-1), all APP13 IPTC #
-# segments are affected at once.                          #
+# This method removes all traces of IPTC/non-IPTC infor-  #
+# mation (depending on $what) from the $index-th APP13    #
+# Photoshop-style Segment. If, after this, the segment is #
+# empty, it is eliminated from the list of segments in    #
+# the file. If $index is (-1), all segments are affected  #
+# at once. If $what is invalid an exception is thrown.    #
+# The meaning of $index depends on $what.                 #
 ###########################################################
-sub remove_app13_IPTC_info {
-    my ($this, $index) = @_;
+sub remove_app13_info {
+    my ($this, $index, $what) = @_;
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
     # this is the list of segments to be purged (initially empty)
     my @purgeme = ();
-    # call the selection routine and save the segment reference
-    my $segment = $this->retrieve_app13_IPTC_segment($index);
-    # if $segment is really a non-null segment reference, push it into
-    # the purge list; otherwise, it is the number of segments to be
-    # purged (this happens if $index is -1). In this case, the selection
-    # routine is repeated with every index, and the results are pushed
-    # in the @purgeme list
-    push @purgeme, $segment if ref $segment;
-    @purgeme = map { $this->retrieve_app13_IPTC_segment($_)
-		     } (0..($segment-1)) if $index == -1;
-    # for each segment in the purge list, apply the purge routine.
-    # If only one record remains in the segment (presumably the
-    # identifier), the segment is marked for deletion at a later stage
-    for (@purgeme) { $_->remove_IPTC_subdirectory();
-		     $_->{name} = "deleteme" if scalar @{$_->{records}} <= 1; }
+    # call the selection routine and store the segment reference
+    push @purgeme, $this->retrieve_app13_segment($index, $what);
+    # if $index is -1, retrieve_... returned the number of
+    # segments to be purged, not a segment reference! In this
+    # case, the selection routine is repeated with every index.
+    @purgeme = map { $this->retrieve_app13_segment($_, $what)
+		     } (0..($purgeme[$#purgeme]-1)) if $index == -1;
+    # for each segment in the purge list, apply the purge routine
+    # (but don't be fooled by undefined references, i.e. invalid
+    # indexes). If only one record remains in the segment (presumably
+    # the Identifier), the segment is marked for a later deletion.
+    for (@purgeme) {
+	next unless defined $_;
+	$_->remove_app13_info($what);
+	$_->{name} = 'deleteme' if scalar @{$_->{records}} <= 1; }
     # remove the marked segments from the file
-    my $segments = $this->{segments};
-    @$segments = grep { $_->{name} ne "deleteme" } @$segments;
-}
-
-###########################################################
-# This method is a generalisation of the method with the  #
-# same name in the Segment class. First, all IPTC APP13   #
-# segment are retrieved (if none is present, the undefi-  #
-# ned value is returned). Then, get_IPTC_data is called   #
-# on each of these segments, passing the argument ($type) #
-# through. The results are then merged in a single hash.  #
-# For further details, see Segment::get_IPTC_data() and   #
-# JPEG::retrieve_app13_IPTC_segment().                    #
-###########################################################
-sub get_IPTC_data {
-    my $this = shift;
-    # get the number of interesting segments
-    my $number = $this->retrieve_app13_IPTC_segment(-1);
-    # return undef if no APP13 IPTC segment is present
-    return undef if $number == 0;
-    # get references to all IPTC APP13 segments and call
-    # get_IPTC_data on each segment, do not store failed
-    # attempts, e.g. if @_ is invalid.
-    my @segment_results = grep { defined $_ }  
-    map { $_->get_IPTC_data(@_) }
-    map { $this->retrieve_app13_IPTC_segment($_) } (0..$number-1);
-    # return undef if there are no results ...
-    return undef unless @segment_results;
-    # define the hash reference to be returned at the end
-    my $result = {};
-    # collect all results in a single hash
-    for (@segment_results) {
-	while (my ($tag, $arrayref) = each %$_) {
-	    # create an array if the tag is new
-	    $$result{$tag} = [] unless exists $$result{$tag};
-	    # push new data related to this tag
-	    my $global_arrayref = $$result{$tag};
-	    push @$global_arrayref, @$arrayref; } }
-    # return the translated content of the segments
-    return $result;
+    $this->drop_segments('deleteme');
 }
 
 ###########################################################
 # This method is an interface to the method with the same #
-# name in the Segment class. First, the first IPTC APP13  #
-# segment is retrieved (if there is no such segment, one  #
-# is created and initialised). Then the set_IPTC_data is  #
-# called on this segment passing the arguments through.   #
-# For further details, see Segment::set_IPTC_data() and   #
-# JPEG::provide_app13_IPTC_segment().                     #
+# name in the Segment class. To begin with, the first     #
+# suitable APP13 segment is retrieved (if there is no     #
+# such segment, undef is returned). Then, get_app13_data  #
+# is called on this segment, passing all the arguments    #
+# through. If $what is invalid an exception is thrown     #
+# out. For further details, have a look at                #
+# Segment::get_app13_data() and retrieve_app13_segment(). #
 ###########################################################
-sub set_IPTC_data {
-    my $this = shift;
-    # get the first IPTC APP13 segment in the current JPEG file
-    # (if there is no such segment, initialise one; therefore,
-    # this call cannot fail [mhh ...]).
-    my $segment = $this->provide_app13_IPTC_segment();
-    # pass the arguments through to the Segment method
-    return $segment->set_IPTC_data(@_);
+sub get_app13_data {
+    my ($this, $type, $what) = @_;
+    # die on unknown $type's (default --> 'TEXTUAL' if undefined)
+    &$sanitise_type($type);
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
+    # get the first suitable APP13 segment in the current JPEG
+    # file (this returns undef if no segment is present).
+    my $segment = $this->retrieve_app13_segment(undef, $what);
+    # return undef if no segment is present
+    return undef unless defined $segment;
+    # pass all arguments to the Segment method
+    return $segment->get_app13_data($type, $what);
+}
+
+###########################################################
+# This method is an interface to the method with the same #
+# name in the Segment class. To begin with, the first     #
+# suitable APP13 segment is retrieved (if there is no     #
+# such segment, one is created and initialised). Then the #
+# set_app13_data is called on this segment passing the    #
+# arguments through. If $what is invalid an exception is  #
+# thrown out. For further details, have a look at         #
+# Segment::set_app13_data() and provide_app13_segment().  #
+###########################################################
+sub set_app13_data {
+    my ($this, $data, $action, $what) = @_;
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
+    # die on unknown $action's (default --> 'REPLACE' if undefined)
+    &$sanitise_action($action);
+    # get the first suitable APP13 segment in the current
+    # JPEG file (if there is no such segment, initialise one;
+    # therefore, this call cannot fail [mhh ...]).
+    my $segment = $this->provide_app13_segment($what);
+    # pass all arguments to the Segment method
+    return $segment->set_app13_data($data, $action, $what);
 }
 
 ###########################################################
@@ -179,53 +185,71 @@ sub set_IPTC_data {
 package Image::MetaData::JPEG::Segment;
 
 ###########################################################
-# This method inspects a segments, and returns "undef" if #
-# it is not an APP13 segment or it does not contain an    #
-# IPTC subdirectory. Otherwise, it returns "ok".          #
+# This method inspects a segments, and return "ok" if the #
+# segment shows the required features, undef otherwise.   #
+# The features are selected by the value of $what:        #
+# 1) ($what is undefined) the segment is an APP13 segment #
+#    and it contains the correct 'Identifier' record.     #
+# 2) ($what eq 'PHOTOSHOP') matches 1) and contains an    #
+#    $APP13_PHOTOSHOP_DIRNAME subdirectory.               #
+# 3) ($what eq 'IPTC') matches 1) and contains an         #
+#    $APP13_IPTC_DIRNAME subdirectory.                    #
 ###########################################################
-sub is_app13_IPTC {
-    my ($this) = @_;
+sub is_app13_ok {
+    my ($this, $what) = @_;
+    # return undef if $what is not recognised (don't die)
+    return undef unless (! defined $what) || eval { &$sanitise_what($what) };
     # return undef if this segment is not APP13
     return undef unless $this->{name} eq 'APP13';
-    # return undef if it does not contain an IPTC subdir
-    return undef unless defined $this->search_record($IPTC_subdir_name);
-    # return ok
-    return "ok";
+    # return undef if there is no 'Identifier' or it is not Photoshop
+    my $id = $this->search_record_value('Identifier');
+    return undef unless $id && $id eq $APP13_PHOTOSHOP_IDENTIFIER;
+    # if $what is undefined we are happy
+    return 'ok' unless defined $what;
+    # return "ok" if $what is defined and the appropriate subdir is there
+    return 'ok' if defined $this->search_record(&$subdir_name($what));
+    # fallback
+    return undef;
 }
 
 ###########################################################
-# This method returns the IPTC subdir record reference    #
-# for the current APP13 segment (undef if not present).   #
+# This method returns the IPTC or PHOTOSHOP subdir record #
+# reference for the current APP13 Photoshop-like segment  #
+# (undef is returned if it is not present).               #
 ###########################################################
-sub retrieve_IPTC_subdirectory {
-    my ($this) = @_;
-    # return immediately if this is not an APP13 segment
-    # containing IPTC information
-    return undef unless $this->is_app13_IPTC();
+sub retrieve_app13_subdir {
+    my ($this, $what) = @_;
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
+    # return immediately if the segment is not suitable
+    return undef unless $this->is_app13_ok($what);
     # return the IPTC subdirectory reference
-    return $this->search_record($IPTC_subdir_name)->get_value();
+    return $this->search_record_value(&$subdir_name($what));
 }
 
 ###########################################################
-# This method returns the IPTC subdir record reference for#
-# the current APP13 segment. If the subdirectory is not   #
-# there, it is first created and initialised. The routine #
-# can fail (return undef) only if the segment isn't APP13.#
+# This method returns the IPTC or PHOTOSHOP subdir record #
+# reference for the current Photoshop-style APP13 segment.#
+# If the subdirectory is not there, it is first created   #
+# and initialised. The routine can fail (returning undef) #
+# only if the segment isn't a Photoshop-style segment.    #
 # If the subdirectory is created, the segment is updated. #
 ###########################################################
-sub provide_IPTC_subdirectory {
-    my ($this) = @_;
+sub provide_app13_subdir {
+    my ($this, $what) = @_;
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
     # don't try to mess up non-APP13 segments!
-    return undef unless $this->{name} eq 'APP13';
+    return undef unless $this->is_app13_ok(undef);
     # be positive, call retrieve first
-    my $subdir = $this->retrieve_IPTC_subdirectory();
+    my $subdir = $this->retrieve_app13_subdir($what);
     # return this value, if it is not undef
     return $subdir if defined $subdir;
-    # create the IPTC subdir in the main record dir of this segment
-    $subdir = $this->provide_subdirectory($IPTC_subdir_name);
-    # initialise the subdirectory with 'RecordVersion'. I don't
-    # know why the standard says "4" here, but you always find "2".
-    $this->store_record($subdir, 0, $UNDEF, \ "\000\002", 2);
+    # create the appropriate subdir in the main record dir of this segment
+    $subdir = $this->provide_subdirectory(&$subdir_name($what));
+    # if $what is 'IPTC', initialise the subdir with 'RecordVersion'.
+    # I don't know why the standard says 4 here, but you always find 2.
+    $this->store_record($subdir,0, $UNDEF, \ "\000\002", 2) if $what eq 'IPTC';
     # obviously, update the segment
     $this->update();
     # return the subdirectory reference
@@ -233,80 +257,95 @@ sub provide_IPTC_subdirectory {
 }
 
 ###########################################################
-# This method deletes all IPTC information from an APP13  #
-# segment. This routine cannot fail (ha, ha ...). If the  #
-# modification is actually made, the segment is updated.  #
+# This method removes all traces of IPTC/non-IPTC infor-  #
+# mation (depending on $what) from the $index-th APP13    #
+# Photoshop-style Segment. This routine cannot fail,      #
+# unless $what is invalid. The segment gets updated if    #
+# the modification is made.                               #
 ###########################################################
-sub remove_IPTC_subdirectory {
-    my ($this) = @_;
+sub remove_app13_info {
+    my ($this, $what) = @_;
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
     # return if there is nothing to erase
-    return unless defined $this->is_app13_IPTC();
-    # get a reference to the record list of the APP13 segment
-    my $records = $this->{records};
-    # this is simple and crude
-    @$records = grep { $_->{key} ne $IPTC_subdir_name } @$records;
+    return unless $this->is_app13_ok($what);
+    # these approach is simple and crude
+    @{$this->{records}} =
+	grep { $_->{key} ne &$subdir_name($what) } @{$this->{records}};
     # update the data area of the segment
     $this->update();
 }
 
 ###########################################################
 # This method returns a reference to a hash containing a  #
-# copy of the list of IPTC records in the current segment,#
-# if present, undef otherwise. Each hash element is a     #
-# (key, arrayref) pair, where 'key' is an IPTC tag and    #
-# 'arrayref' points to an array with the record values    #
-# (since an IPTC tag can be repeateable, this array can   #
-# actually contain more than one value). The $type argu-  #
-# ment selects the output format:                         #
+# copy of the list of Photoshop or IPTC records (selected #
+# by $what) in the current segment, if present, undef     #
+# otherwise. Each hash element is a (key, arrayref) pair, #
+# where 'key' is a Photoshop or IPTC tag and 'arrayref'   #
+# points to an array with the record values. The $type    #
+# argument selects the output format:                     #
 #  - NUMERIC: hash with native numeric keys               #
 #  - TEXTUAL: hash with translated textual keys (default) #
-# If a numerical IPTC key is not known, a custom textual  #
-# key is created with "Unknown_tag_" followed by the nu-  #
+# If $type or $what is invalid, an exception is thrown.   #
+# If a numerical key (tag) is not known, a custom textual #
+# key is created with 'Unknown_tag_' followed by the nu-  #
 # merical value (solves problem with non-standard tags).  #
 # ------------------------------------------------------- #
+# Since an IPTC tag can be repeateable, @$arrayref can    #
+# actually contain more than one value. Moreover, if      #
+# $what is PHOTOSHOP, resource block names are appended   #
+# (so, the @$arrayref length is always even in this case, #
+# and almost always equal to two).                        #
+# ------------------------------------------------------- #
 # Note that there is no check at all on the validity of   #
-# the IPTC record values: their format is not checked and #
-# one or multiple values can be attached to a single key  #
-# independently of the IPTC repeatability. This is, in    #
-# some sense, consistent with the fact that also "unknown"#
-# tags are included in the output.                        #
+# the Photoshop/IPTC record values: their format is not   #
+# checked and one or multiple values can be attached to   #
+# a single key independently of its repeatability. This   #
+# is, in some sense, consistent with the fact that also   #
+# "unknown" tags are included in the output.              #
 ###########################################################
-sub get_IPTC_data {
-    my ($this, $type) = @_;
-    # set the default type, if it is undefined
-    $type = 'TEXTUAL' unless defined $type;
-    # reject unknown types
-    return undef unless $type =~ /^NUMERIC$|^TEXTUAL$/;
-    # get the reference to the IPTC subdirectory (don't force)
-    my $IPTC_array = $this->retrieve_IPTC_subdirectory();
+sub get_app13_data {
+    my ($this, $type, $what) = @_;
+    # die on unknown $type's (default --> 'TEXTUAL' if undefined)
+    &$sanitise_type($type);
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
+    # retrieve the appropriate records list
+    my $records = $this->retrieve_app13_subdir($what);
     # return undef if the directory is not present
-    return undef unless $IPTC_array;
-    # create a hash, where the keys are the numeric keys of
-    # @$IPTC_array and the values are array references. The arrays
-    # pointed to by these references are then filled with the record
-    # values, accumulating these values according to the tag.
-    my %IPTC_data = map { $_->{key} => [] } @$IPTC_array;
-    push @{$IPTC_data{$_->{key}}}, $_->get_value() for @$IPTC_array;
-    # if the type is textual, the tags must be translated; if there
-    # is no entry  in %IPTC_tags with key equal to $_, create a tag
-    # carrying "Unknown_tag_" followed by the key numerical value.
-    %IPTC_data = map {
-	(exists $IPTC_tags{$_} ? $IPTC_tags{$_} : "Unknown_tag_$_")
-	    => $IPTC_data{$_} } keys %IPTC_data if $type eq 'TEXTUAL';
+    return undef unless $records;
+    # this is the data hash to be filled
+    my $data = {};
+    # create a hash, where the keys are the numeric keys of @$records
+    # and the values are references to (initially empty) arrays.
+    $$data{$_} = [] for map { $_->{key} } @$records;
+    # These arrays are then filled with the record values,
+    # accumulated according to the tag.
+    push @{$$data{$_->{key}}}, $_->get_value() for @$records;
+    # if $what is 'PHOTOSHOP', append the "extra" values for each
+    # record, according to the tag (this is undef, mostly).
+    if ($what eq 'PHOTOSHOP') {
+	push @{$$data{$_->{key}}}, $_->{extra} for @$records; }
+    # if the type is textual, the tags must be translated;
+    # if there is no positive match from JPEG_lookup, create a tag
+    # carrying 'Unknown_tag_' followed by the key numerical value.
+    %$data = map { my $match = JPEG_lookup('APP13',&$subdir_name($what),$_);
+		   (defined $match ? $match : "Unknown_tag_$_")
+		       => $$data{$_} } keys %$data if $type eq 'TEXTUAL';
     # return the magic scalar
-    return \ %IPTC_data;
+    return $data;
 }
 
 ###########################################################
-# This method accepts IPTC data in various formats and    #
-# updates the IPTC subdirectory in the segment. The key   #
-# type of each entry in the input %$data hash can be      #
-# numeric or textual, independently of the others (the    #
-# same key can appear in both forms, the corresponding    #
-# values will be put together). The value of each entry   #
-# can be an array reference or a scalar (you can use this #
-# as a shortcut for value arrays with only one value).    #
-# The $action argument can be: (default = REPLACE)        #
+# This method accepts Photoshop data in various formats   #
+# and updates the content of a Photoshop-style APP13      #
+# segment. The key type of each entry in the input %$data #
+# hash can be numeric or textual, independently of the    #
+# others (the same key can appear in both forms, the      #
+# corresponding values will be put together). The value   #
+# of each entry can be an array reference or a scalar     #
+# (you can use this as a shortcut for value arrays with   #
+# only one value). The $action argument can be:           #
 # - ADD : new records are added and nothing is deleted;   #
 #      however, if you try to add a non-repeatable record #
 #      which is already present, the newly supplied value #
@@ -314,57 +353,68 @@ sub get_IPTC_data {
 # - UPDATE : new records replace those characterised by   #
 #      the same tags, but the others are preserved. This  #
 #      makes it possible to modify repeatable records.    #
-# - REPLACE : all records present in the IPTC subdirecto- #
-#      ry are deleted before inserting the new ones.      #
-# If, after implementing the changes required by $action, #
-# the 'RecordVersion' record (dataset 0) is still unde-   #
-# fined, it is added (with version = 2). The return value #
-# is a reference to a hash containing the rejected key-   #
-# values entries. The entries of %$data are not modified. #
+# - REPLACE : [default] all records in the relevant       #
+#      subdir are deleted before inserting the new ones.  #
+# The return value is a reference to a hash containing    #
+# the rejected key-values entries. The entries of %$data  #
+# are not modified.                                       #
+# ------------------------------------------------------- #
+# If $what is 'IPTC' and, after implementing the changes  #
+# required by $action, the 'RecordVersion' record is      #
+# still undefined, it is added (with version = 2).        #
+# If $what is 'PHOTOSHOP', UPDATE is a synonim of 'ADD',  #
+# and the second value is used as data block name.        #
 # ------------------------------------------------------- #
 # At the end, the segment data area is updated. An entry  #
-# in the %$data hash can be rejected for various reasons: #
-#  - the tag is textual or numeric and it is not known;   #
-#  - the tag is numeric and not in the range 0-255;       #
-#  - the entry value is an empty array;                   #
+# in the %$data hash may be rejected for various reasons: #
+#  - the tag is undefined or not known;                   #
+#  - the entry value is undef or points to an empty array;#
+#     [IPTC only]:                                        #
 #  - the non-repeatable property is violated;             #
 #  - the tag is marked as invalid;                        #
+#  - a value is undefined;                                #
 #  - the length of a value is invalid;                    #
 #  - a value does not match its mandatory regular expr.   #
 ###########################################################
-sub set_IPTC_data {
-    my ($this, $data, $action) = @_;
+sub set_app13_data {
+    my ($this, $data, $action, $what) = @_;
+    # die on unknown $action's (default --> 'REPLACE' if undefined)
+    &$sanitise_action($action);
+    # die on unknown $what's (default --> 'IPTC' if undefined)
+    &$sanitise_what($what);
     # return immediately if $data is not a hash reference
     return unless ref $data eq 'HASH';
-    # set the default action, if it is undefined
-    $action = 'REPLACE' unless defined $action;
-    # complain about unknown actions
-    die "Unknown action $action" unless $action =~ /ADD|UPDATE|REPLACE/;
+    # collapse UPDATE into ADD if $what is PHOTOSHOP
+    $action = 'ADD' if $what eq 'PHOTOSHOP' && $action eq 'UPDATE';
     # prepare two hash references and initialise them to anonymous empty
     # hashes; they are going to contain accepted and rejected data
     my $data_accepted = {}; my $data_rejected = {};
-    # populate both $data_accepted and $data_rejected. First, all entries
-    # are accepted, exception made for those with unknown textual keys.
-    # Also, all accepted entries have their keys forced to numeric form.
-    for (keys %$data) {
+    # Populate both $data_accepted and $data_rejected. Force the
+    # keys of all accepted entries to be numeric. Also, force an
+    # ordering on %$data; this is necessary because the same key
+    # can be present twice, in numeric and textual form, and we want
+    # the corresponding value merging to be stable (numeric goes first)
+    for (sort keys %$data) {
 	# get copies, do not manipulate original data!
 	my ($tag, $value) = ($_, $$data{$_});
 	# accept both array references and plain scalars
 	$value = (ref $value) ?  [ @$value ] : [ $value ];
-	# textual to numeric translation, if textual and known
-	$tag = $IPTC_names{$tag} if exists $IPTC_names{$tag};
-	# get a reference to the correct repository: an entry is accepted
-	# if keys are numeric and known to the %IPTC_tags hash and if they
-	# pass the value_is_OK test; rejected otherwise.
-	my $repository = 
-	    ( $tag =~ /^[0-9]*$/ && exists $IPTC_tags{$tag} &&
-	      value_is_OK($tag, $value) ) ? $data_accepted : $data_rejected;
+	# if $tag is not numeric, try a textual to numeric
+	# translation; (but don't set it to an undefined value yet)
+	if (defined $tag && $tag !~ /^\d*$/) {
+	    my $value = JPEG_lookup('APP13', &$subdir_name($what), $tag);
+	    $tag = $value if defined $value; }
+	# get a reference to the correct repository: an entry is
+	# accepted if it passes the value_is_OK test, rejected otherwise.
+	my $repository = value_is_OK($tag, $value, $what) ?
+	    $data_accepted : $data_rejected;
 	# add data to the repository (do not overwrite!)
 	$$repository{$tag} = [ ] unless exists $$repository{$tag};
 	push @{$$repository{$tag}}, @$value; }
     # if $action is not 'REPLACE', old records need to be merged in;
     # take a copy of all current records if necessary
-    my $oldrecs = $action =~ /REPLACE/ ? {} : $this->get_IPTC_data('NUMERIC');
+    my $oldrecs = $action eq 'REPLACE' ? {} :
+	$this->get_app13_data('NUMERIC', $what);
     # loop over all entries in the %$oldrecs hash and insert them into the
     # new hash if necessary (the "old hash" is of course empty if $action
     # corresponds to 'REPLACE', so we are dealing with 'ADD' or 'UPDATE' here).
@@ -372,32 +422,53 @@ sub set_IPTC_data {
 	# a pre-existing tag must always remain, prepare a slot. 
 	$$data_accepted{$tag} = [] unless exists $$data_accepted{$tag};
 	# if the tag is already covered by the new values and the
-	# requested action is 'UPDATE', do nothing ....
+	# $action is 'UPDATE' or $what is 'PHOTOSHOP', do nothing
+	# (I am assuming that 'PHOTOSHOP' is non-repeatable)
 	my $newarrayref = $$data_accepted{$tag};
-	next if @$newarrayref && $action =~ /UPDATE/;
+	next if @$newarrayref && ($action eq 'UPDATE' || $what eq 'PHOTOSHOP');
 	# ... otherwise (i.e., if $action is 'ADD' or $action is 'UPDATE'
 	# but the tag is not overwritten by new values) insert the old
 	# values at the beginning of the value array.
 	unshift @$newarrayref, @$oldarrayref; }
-    # the previous merging could have assigned more than one value to
-    # non-repeatable records (for $action equal to 'ADD'). Solve this
-    # problem, retaining only the last value in this case.
-    shift_non_repeatables($data_accepted);
-    # be sure that the 'RecordVersion' record (dataset 0) is present;
-    # insert, if necessary (with version = 2) ?
-    $$data_accepted{0} = [ "\000\002" ]
-	unless exists $$data_accepted{0} && @{$$data_accepted{0}};
-    # get and clear the IPTC subdirectory
-    my $dirref = $this->provide_IPTC_subdirectory();
+    # get and clear the appropriate records directory
+    my $dirref = $this->provide_app13_subdir($what);
     @$dirref = ();
-    # now all keys are surely valid and numeric. For each element
-    # in the hash, create one or more Records corresponding to a
-    # dataset and insert them into the appropriate subdirectory
-    map { my $key = $_; map {
-	# each element of the array in a hash element creates a new Record
-	$this->store_record($dirref, $key, $ASCII, \ $_, length $_); }
-	  # sort the Records on the numeric key
-	  @{$$data_accepted{$_}} } sort { $a <=> $b } keys %$data_accepted;
+    ############ PHOTOSHOP records ##################
+    if ($what eq 'PHOTOSHOP') {
+	# do not accept the IPTC/NAA tag: it must be set with $what eq 'IPTC'
+	$$data_rejected{$APP13_PHOTOSHOP_IPTC} =
+	    scalar delete $$data_accepted{$APP13_PHOTOSHOP_IPTC}
+	if exists $$data_accepted{$APP13_PHOTOSHOP_IPTC};
+	# this is quite simple; for each key, create a resource data
+	# block with the first value. If there is a second value,
+	# set "extra"; sort the Records on the numeric key
+	for my $key (sort {$a<=>$b} keys %$data_accepted) {
+	    my $arrayref = $$data_accepted{$key};
+	    # resource data block value (the Record obj. is in @$dirref)
+	    my $vref = \ $$arrayref[0];
+	    $this->store_record($dirref, $key, $UNDEF, $vref, length $$vref);
+	    # resource data block extra (the Record obj. is in @$dirref)
+	    $this->search_record('LAST_RECORD', $dirref)->{extra} =
+		$$arrayref[1] if exists $$arrayref[1]; } }
+    ############ IPTC records #######################
+    if ($what eq 'IPTC') {
+	# the previous merging could have assigned more than one value to
+	# non-repeatable records (for $action equal to 'ADD'). Solve this
+	# problem, retaining only the last value in this case.
+	shift_non_repeatables($data_accepted);
+	# be sure that the 'RecordVersion' record (dataset 0) is present;
+	# insert, if necessary (with version = 2) ?
+	$$data_accepted{0} = [ "\000\002" ]
+	    unless exists $$data_accepted{0} && @{$$data_accepted{0}};
+	# now all keys are surely valid and numeric. For each element
+	# in the hash, create one or more Records corresponding to a
+	# dataset and insert them into the appropriate subdirectory
+	# sort the Records on the numeric key
+	for my $key (sort {$a<=>$b} keys %$data_accepted) {
+	    # each element of the array in a hash
+	    # element creates a new Record
+	    $this->store_record($dirref, $key, $ASCII, \ $_, length $_)
+		for @{$$data_accepted{$key}}; } }
     # remember to commit these changes to the data area
     $this->update();
     # return the reference of rejected tags/values
@@ -415,7 +486,7 @@ sub shift_non_repeatables {
     # loop over all elements in the hash
     while (my ($tag, $arrayref) = each %$hashref) {
 	# get the constraints of this record
-	my $constraints = $HASH_IPTC_GENERAL{$tag};
+	my $constraints = JPEG_lookup('APP13@__syntax_IPTC', $tag);
 	# skip unknown tags (this shouldn't happen) and repeatable records
 	next unless $constraints && $$constraints[1] eq 'N';
 	# retain only the last element of this non-repeatable record
@@ -426,35 +497,44 @@ sub shift_non_repeatables {
 ###########################################################
 # This function return true if a given value fits a given #
 # IPTC tags, false otherwise. The input arguments are a   #
-# numeric tag and an array reference, as usual.           #
+# numeric tag and an array reference, as usual. + $what   #
 ###########################################################
 sub value_is_OK {
-    my ($tag, $arrayref) = @_;
-    # $tag must be a numeric value in 0-255
-    return undef unless $tag =~ /^\d*$/ && $tag < 256;
+    my ($tag, $arrayref, $what) = @_;
+    # $tag must be defined
+    return undef unless defined $tag;
+    # $tag must be a numeric value
+    return undef unless $tag =~ /^\d*$/;
     # $arrayref must be an array reference
     return undef unless ref $arrayref && ref $arrayref eq 'ARRAY';
     # the referenced array must contain at least one element
     return undef unless @$arrayref;
-    # if the tag is not known, everything is acceptable ...
-    return 1 unless exists $IPTC_tags{$tag};
-    # from now on, we study the content of $HASH_IPTC_GENERAL
-    my $constraints = $HASH_IPTC_GENERAL{$tag};
+    # if the tag is not known, it is not acceptable
+    return undef unless JPEG_lookup('APP13', &$subdir_name($what), $tag);
+    # it $what is 'PHOTOSHOP', the number of values can be 1 or 2
+    return undef if $what eq 'PHOTOSHOP' && scalar @$arrayref > 2;
+    # .... moreover, the first value cannot be undefined
+    return undef if $what eq 'PHOTOSHOP' && ! defined $$arrayref[0];
+    # the following tests apply only to IPTC data
+    return 1 unless $what eq 'IPTC';
+    # from now on, we study the content of the IPTC syntax hash
+    my $constraints = JPEG_lookup('APP13@__syntax_IPTC', $tag);
     # if the tag is non-repeatable, accept exactly one element
     return undef if $$constraints[1] eq 'N' && @$arrayref != 1;
     # get the mandatory "regular expression" for this tag
     my $regex = $$constraints[4];
-    # if $regex matches "invalid", inhibit this tag
+    # if $regex matches 'invalid', inhibit this tag
     return undef if $regex =~ /invalid/;
-    # if $regex matches "binary", everything is permitted
-    return 1 if $regex =~ /binary/;
     # run the following tests on all values
     for (@$arrayref) {
+	# each value must be defined
+	return undef unless defined $_;
 	# each value length must fit the appropriate range
 	return undef if (length $_ < $$constraints[2] || 
 			 length $_ > $$constraints[3] );
-	# each value must match the mandatory regular expression
-	return undef unless /$regex/; }
+	# each value must match the mandatory regular expression;
+	# but, if $regex matches 'binary', everything is permitted
+	return undef unless /$regex/ || $regex =~ /binary/; }
     # all tests were successful! return success
     return 1;
 }

@@ -27,7 +27,7 @@ use warnings;
 sub dump_com {
     my ($this) = @_;
     # write the only record into the data area
-    $this->set_data($this->search_record('Comment')->get_value(), "OVERWRITE");
+    $this->set_data($this->search_record_value('Comment'), "OVERWRITE");
 }
 
 ###########################################################
@@ -37,16 +37,14 @@ sub dump_com {
 ###########################################################
 sub dump_app1 {
     my ($this) = @_;
-    # get a reference to the segment record list
-    my $records = $this->{records};
-    # the first record can tell us the segment type
-    my $first = $this->search_record("FIRST_RECORD");
-    # If the first record is an 'Identifier' and it contains
+    # If the 'Identifier' record exists and contains
     # the EXIF tag, this is a standard Exif segment
-    return $this->dump_app1_exif() if ($first->{key} eq 'Identifier' &&
-				       $first->get() eq $APP1_EXIF_TAG);
-    # If the first record is a 'Namespace', this is an Adobe XMP segment
-    die "Dumping XMP APP1" if $first->{key} eq 'Namespace';
+    my $identif = $this->search_record_value('Identifier');
+    return $this->dump_app1_exif() if $identif && $identif eq $APP1_EXIF_TAG;
+    # Otherwise, look for a 'Namespace' record; chances
+    # are this is an Adobe XMP segment
+    my $namespace = $this->search_record_value('Namespace');
+    die "Dumping XMP APP1" if defined $namespace;
     # Otherwise, we have a problem
     die "APP1 segment dump not possible";
 }
@@ -125,12 +123,10 @@ sub dump_TIFF_header {
 sub dump_ifd {
     my ($this, $dirnames, $offset) = @_;
     # retrieve the appropriate record list (specified by a '@' separated
-    # list of dir names in $dirnames to be interpreted in sequence). Do
-    # not create a directory if it is not there! (so, you cannot use
-    # provide_subdirectory here). But we must return a valid reference.
-    my $dirref = undef; for (split /@/, $dirnames) {
-	return \ "" unless $dirref = $this->search_record($_, $dirref);
-	return \ "" unless $dirref = $dirref->get_value(); }
+    # list of dir names in $dirnames to be interpreted in sequence). If
+    # this fails, return immediately with a reference to an empty string
+    my $dirref = $this->search_record_value($dirnames);
+    return \ (my $ns = '') unless $dirref;
     # $short and $long are two useful format strings correctly taking
     # into account the IFD endianness. $format is a format string for
     # packing an Interoperability array
@@ -145,8 +141,8 @@ sub dump_ifd {
     # @records list with a dummy value (zero). We can safely use $LONG as
     # record type (new-style offsets).
     push @records, map {
-	my $nt = JPEG_lookup($this->{name}, split(/@/, $dirnames), $_->{extra});
-	new Image::MetaData::JPEG::Record ($nt, $LONG, \ pack($long, 0)) }
+	my $nt = JPEG_lookup($this->{name}, $dirnames, $_->{extra});
+	new Image::MetaData::JPEG::Record($nt, $LONG, \ pack($long, 0)) }
     grep { $_->{type} == $REFERENCE } @$dirref;
     # sort the accumulated records with respect to their tags (numeric).
     # This is not, strictly speaking mandatory, but the file looks more
@@ -173,6 +169,10 @@ sub dump_ifd {
     # the following tags can be found only in IFD1 in APP1, and concern
     # the thumbnail location. They must be dealt with in a special way.
     my %th_tags = ($THTIFF_OFFSET => undef, $THJPEG_OFFSET => undef);
+    # determine weather this IFD can have subidrectories or not; if so,
+    # get a special mapping table from %IFD_SUBDIRS (avoid autovivification)
+    my $path = join '@', $this->{name}, $dirnames;
+    my $mapping = exists $IFD_SUBDIRS{$path} ? $IFD_SUBDIRS{$path} : undef;
     # loop on all selected records and dump them
     for my $record (@records) {
 	# extract all necessary information about this
@@ -193,12 +193,13 @@ sub dump_ifd {
 	    $th_tags{$tag} = length $ifd_content;
 	    $ifd_content .= "\000\000\000\000"; }
 	# if this Interop array is known to correspond to a subdirectory
-	# (thanks to %IFD_SUBDIRS), the subdirectory content is calculated
+	# (use %$mapping for this), the subdirectory content is calculated
 	# on the fly, and stored in this IFD's remote data area. Its offset
 	# instead is saved at the end of the Interoperability array.
-	elsif (exists $IFD_SUBDIRS{$tag}) {
+	elsif ($mapping && exists $$mapping{$tag}) {
 	    $ifd_content .= pack $long, $remote;
-	    my $subifd    = $this->dump_ifd($IFD_SUBDIRS{$tag}, $remote);
+	    my $extended_dirnames = join '@', $dirnames, $$mapping{$tag};
+	    my $subifd    = $this->dump_ifd($extended_dirnames, $remote);
 	    $extra  .= $$subifd;
 	    $remote += length $$subifd; }
 	# if the data length is not larger than four bytes, we are ok.
@@ -246,12 +247,24 @@ sub dump_app13 {
     # get a reference to the segment record list
     my $records = $this->{records};
     # the segment always starts with the Adobe identifier
-    my $first = $this->search_record("FIRST_RECORD");
-    die "Malformed APP13 segment (1)" if $first->{key} ne 'Identifier';
-    $this->set_data(scalar $first->get(), "OVERWRITE");
-    # dump all the remaining resource data block records
-    $this->dump_resource_data_block($_)
-	for grep { $_->{key} ne 'Identifier'; } @$records;
+    my $id = $this->search_record_value('Identifier');
+    die "Malformed APP13 segment (Identifier)"
+	unless $id && $id eq $APP13_PHOTOSHOP_IDENTIFIER;
+    $this->set_data($APP13_PHOTOSHOP_IDENTIFIER, "OVERWRITE");
+    # check if subdirectories are present or not
+    my $iptc_records = $this->search_record_value($APP13_IPTC_DIRNAME);
+    my $shop_records = $this->search_record_value($APP13_PHOTOSHOP_DIRNAME);
+    # dump the IPTC block, if present; the easiest solution is
+    # to create a fake Record, which is then dumped as usual
+    if ($iptc_records) {
+	my $block = dump_IPTC_datasets($iptc_records);
+	my $record = new Image::MetaData::JPEG::Record
+	    ($APP13_PHOTOSHOP_IPTC, $UNDEF, \ $block, length $block);
+	$record->{extra} = $this->search_record($APP13_IPTC_DIRNAME)->{extra};
+	$this->dump_resource_data_block($record); }
+    # dump the other Photoshop blocks, if any
+    if ($shop_records) {
+	$this->dump_resource_data_block($_) for @$shop_records; }
 }
 
 ###########################################################
@@ -261,12 +274,9 @@ sub dump_resource_data_block {
     my ($this, $record) = @_;
     # dump the Adobe Photoshop identifier
     $this->set_data($APP13_PHOTOSHOP_TYPE);
-    # dump the block identifier, which is either the numeric tag of
-    # the record (as a 2-byte unsigned integer) for a generic record,
-    # or $APP13_PHOTOSHOP_IPTC for IPTC data (in this case, the
-    # record is a reference to a subdirectory).
-    $this->set_data(pack "n", ($record->{type} == $REFERENCE) ?
-		    $APP13_PHOTOSHOP_IPTC : $record->{key});
+    # dump the block identifier, which is the numeric tag
+    # of the record (as a 2-byte unsigned integer).
+    $this->set_data(pack "n", $record->{key});
     # the block name is usually "\000"; if it is not trivial, it was
     # saved in the "extra" record field. Retrieve it, then calculate
     # its official length, then pad it so that storing the name length
@@ -275,11 +285,8 @@ sub dump_resource_data_block {
     my $name_length = length $name;
     my $padding = ($name_length % 2) == 0 ? "\000" : "";
     $this->set_data(pack("C", $name_length) . $name . $padding);
-    # if we are dealing with an IPTC data block, retrieve the whole
-    # encoded block as a single string with a separate routine.
-    # Otherwise, $block is simply the record dump.
-    my $data = ($record->{type} == $REFERENCE) ?
-	$this->dump_IPTC_datasets($record) : $record->get();
+    # initialise $data with the record dump.
+    my $data = $record->get();
     # the next four bytes encode the resource data size. Also in this
     # case the total size must be padded to an even number of bytes
     my $data_length = length $data;
@@ -289,17 +296,15 @@ sub dump_resource_data_block {
 }
 
 ###########################################################
-# This method dumps all datasets from an APP13 IPTC re-   #
-# cord into a string, which is returned at the end. The   #
-# argument is the REFERENCE record pointing to the IPTC   #
-# datasets. See parse_IPTC_dataset for details.           #
+# This auxilliary routine dumps all IPTC records in the   #
+# @$records subdirectory into datasets, and concatenates  #
+# them into a string, which is returned at the end. See   #
+# parse_IPTC_dataset for details.                         #
 ###########################################################
 sub dump_IPTC_datasets {
-    my ($this, $record) = @_;
+    my ($records) = @_;
     # prepare the scalar to be returned at the end
     my $block = "";
-    # get the subdirectory reference (a reference to the record list)
-    my $records = $record->get();
     # Each record is a sequence of variable length data sets. Each
     # dataset begins with a "tag marker" (its value is fixed) followed
     # by a "record number" (fixed to 2; here "record" means "IPTC record",

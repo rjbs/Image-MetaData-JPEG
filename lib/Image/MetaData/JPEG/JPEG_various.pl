@@ -4,7 +4,6 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Segment;
 no  integer;
 use strict;
 use warnings;
@@ -23,8 +22,7 @@ sub get_description {
     # Print the image size
     $description .= sprintf "(%dx%d)\n", $this->get_dimensions();
     # Loop over all segments (use the order of the array)
-    my $segments = $this->{segments};
-    $description .= $_->get_description() foreach (@$segments);
+    $description .= $_->get_description() foreach @{$this->{segments}};
     # return the string which was cooked up
     return $description;
 }
@@ -48,23 +46,26 @@ sub get_dimensions {
     # same if there is an error in the segment
     my $segment = $sofs[0];
     return (0,0) if $segment->{error};
-    # if the segment is OK, retrieve the x and y dimension from
-    # two specific records: 'MaxSamplesPerLine' and 'MaxLineNumber'
-    return ( $segment->search_record('MaxSamplesPerLine')->get_value(),
-	     $segment->search_record('MaxLineNumber')->get_value() );
+    # search the relevant records and get their values: if they are
+    # not there, we get undef, which we promptly transform into zero
+    my $xdim = $segment->search_record_value('MaxSamplesPerLine') || 0;
+    my $ydim = $segment->search_record_value('MaxLineNumber')     || 0;
+    # return dimension values
+    return ( $xdim, $ydim );
 }
 
 ###########################################################
-# This method returns a reference to a hash with the con- #
-# tent of the APP0 segments (a plain translation of the   #
-# segment content). Segments with errors are excluded.    #
-# Note that some keys may be overwritten by the values of #
-# the last segment, and that an empty hash means that no  #
-# valid APP0 segment is present. See Segment::parse_app0  #
-# for further details.                                    #
+# This method returns a reference to a hash with a plain  #
+# translation of the content of the first interesting     #
+# APP0 segment (this is the first 'JFXX' APP0 segment,    #
+# if present, the first 'JFIF' APP0 segment otherwise).   #
+# Segments with errors are excluded. An empty hash means  #
+# that no valid APP0 segment is present.                  #
+# See Segment::parse_app0 for further details.            #
 #=========================================================#
 #     JFIF          JFXX          JFXX          JFXX      #
-#               (RGB 1 byte)  (RGB 3 bytes)    (JPEG)     #
+#    (basic)    (RGB 1 byte)  (RGB 3 bytes)    (JPEG)     #
+#  -----------  ------------  -------------  -----------  #
 #   Identifier   Identifier    Identifier    Identifier   #
 #  MajorVersion ExtensionCode ExtensionCode ExtensionCode #
 #  MinorVersion  XThumbnail    XThumbnail   JPEGThumbnail #
@@ -77,17 +78,16 @@ sub get_dimensions {
 ###########################################################
 sub get_app0_data {
     my ($this) = @_;
-    # prepare the hash to be returned at the end
-    my %data = ();
-    # find the APP0 segments
-    my @app0s = $this->get_segments("APP0");
-    # fill the hash with the records in the APP0 segments,
-    # excluding segments with errors
-    for my $segment (@app0s) {
-	next if $segment->{error};
-	my $records = $segment->{records};
-	do { $data{$_->{key}} = $_->get_value() } for @$records; }
-    # return a reference to a filled hash
+    # find all APP0 segments, excluding segments with errors
+    my @app0s = grep { ! $_->{error} } $this->get_segments("APP0");
+    # select extended JFIF segments (the identifier contains JFXX)
+    my @jfxxs = grep { my $id = $_->search_record_value('Identifier');
+		       defined $id && $id =~ /JFXX/ } @app0s;
+    # select a segment (try JFXX, then plain APP0, otherwise undef)
+    my $segment = @jfxxs ? $jfxxs[0] : (@app0s ? $app0s[0] : undef);
+    # prepare a hash with the records in the APP0 segment
+    my %data = map { $_->{key} => $_->get_value() } @{$segment->{records}};
+    # return a reference to the filled hash
     return \ %data;
 }
 

@@ -47,12 +47,10 @@ sub get_number_of_comments {
 ###########################################################
 sub get_comments {
     my ($this) = @_;
-    # get the list of segment references in this file
-    my $segments = $this->{segments};
     # loop over all segments, and return the appropriate
     # field of those which are comments.
-    map { $_->search_record('Comment')->get_value() } 
-    $this->get_segments('COM');
+    my @com_segs = $this->get_segments('COM');
+    return map { $_->search_record_value('Comment') } @com_segs;
 }
 
 ###########################################################
@@ -69,20 +67,19 @@ sub get_comments {
 ###########################################################
 sub add_comment {
     my ($this, $string) = @_;
-    # create one or more comment blocks, based on the user
-    # string (the string must be split if it is too long).
-    my @new_comments = map { new Image::MetaData::JPEG::Segment("COM", \ $_) }
-                             split_comment_string($string);
-    # get the list of segment references in this file
-    my $segments = $this->{segments};
+    # create one or more comment blocks, based on the user string
+    # (the string must be split if it is too long). (remember
+    # about the new 'parental' link in the Segement ctor)
+    my @new_comments = 
+	map { new Image::MetaData::JPEG::Segment($this, "COM", \ $_) }
+        split_comment_string($string);
     # get the list of comment indexes
     my @indexes = $this->get_segments('COM', 'INDEXES');
     # our position is right after the last comment
     my $position = @indexes ? 1 + $indexes[$#indexes] : undef;
-    # if the position is still undefined, use the standard search
-    $position =$this->find_new_app_segment_position() unless defined $position;
-    # actually insert the comments
-    splice @$segments, $position, 0, @new_comments;
+    # actually insert the comments (we don't need update() here);
+    # if position is undefined, the standard search is used
+    $this->insert_segments(\ @new_comments, $position);
 }
 
 ###########################################################
@@ -106,18 +103,18 @@ sub set_comment {
 	if ($#indexes < $index);
     # otherwise, set an index to the target comment segment
     my $position = $indexes[$index];
-    # create one or more comment blocks, based on the user
-    # string (the string must be split if it is too long).
-    my @new_comments = map { new Image::MetaData::JPEG::Segment("COM", \ $_) }
-                             split_comment_string($string);
-    # get the list of segment references in this file
-    my $segments = $this->{segments};
+    # create one or more comment blocks, based on the user string
+    # (the string must be split if it is too long). (remember
+    # about the new 'parental' link in the Segement ctor)
+    my @new_comments = 
+	map { new Image::MetaData::JPEG::Segment($this, "COM", \ $_) }
+        split_comment_string($string);
     # replace the target segment with the new segments created
     # from the user string; @new_comments is the void list if
     # $string is undefined (this stands for comment deletion).
     # Since all comments are deleted or added, but not modified,
     # there is no need to call update here!
-    splice @$segments, $position, 1, @new_comments;
+    $this->insert_segments(\ @new_comments, $position, 1);
 }
 
 ###########################################################
@@ -134,14 +131,13 @@ sub remove_comment {
 ###########################################################
 # This method eliminates all comment segments currently   #
 # present in the file. It does not call set_comment, but  #
-# accesses the list directly (faster).                    #
+# accesses the list directly (faster). It is now only a   #
+# wrapper around the drop_segments method.                #
 ###########################################################
 sub remove_all_comments {
     my ($this) = @_;
-    # get the list of segment references in this file
-    my $segments = $this->{segments};
-    # filter the list (eliminate "COM" segments)
-    @$segments = grep { $_->{name} ne "COM" } @$segments;
+    # use this more general method
+    $this->drop_segments('^COM$');
 }
 
 ###########################################################
@@ -176,11 +172,11 @@ sub join_comments {
 	if    (! defined $_)         { $error = "Undefined comment index"; }
 	elsif ($_ =~ /[^\d]/)        { $error = "'$_' not a whole number"; }
 	elsif ($_<0 || $_>$#indexes) { $error = "index $_ out of range"; }
-	warn "$error in join_comments: discarding index" if defined $error;
+	die "$error in join_comments: discarding index" if defined $error;
 	defined $error ? () : $_;
     } @selection;
     # return immediately if @selection is empty
-    return warn "No valid comment indexes in join_comments" unless @selection;
+    die "No valid comment indexes in join_comments" unless @selection;
     # concatenate valid comments in a single string (write a copy
     # of the separation string between every two comments).
     my $joint_comment = join $separation, map { $comments[$_] } @selection;

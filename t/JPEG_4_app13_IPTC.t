@@ -9,80 +9,84 @@ my ($image, $hash, $bighash);
 
 #=======================================
 diag "Testing APP13 IPTC format checker";
-plan tests => 19;
+plan tests => 20;
 #=======================================
 
 #########################
 $image = $cname->new($tphoto);
-$hash = $image->set_IPTC_data({ 80 => "ciao" }); # ByLine
+$hash = $image->set_app13_data({ 80 => "ciao" }); # ByLine
 is( scalar keys %$hash, 0, "regular tag" );
 
 #########################
-$hash = $image->set_IPTC_data({ 1 => "ciao" });
+$hash = $image->set_app13_data({ 1 => "ciao" });
 is( scalar keys %$hash, 1, "unkwnon numeric tag" );
 
 #########################
-$hash = $image->set_IPTC_data({ -3 => "ciao" });
+$hash = $image->set_app13_data({ -3 => "ciao" });
 is( scalar keys %$hash, 1, "negative tag" );
 
 #########################
-$hash = $image->set_IPTC_data({ 313 => "ciao" });
+$hash = $image->set_app13_data({ 313 => "ciao" });
 is( scalar keys %$hash, 1, "tag larger than 255" );
 
 #########################
-$hash = $image->set_IPTC_data({ "XYZ" => "ciao" });
+$hash = $image->set_app13_data({ "XYZ" => "ciao" });
 is( scalar keys %$hash, 1, "unkwnon textual tag" );
 
 #########################
-$hash = $image->set_IPTC_data({ 80 => [] });
+$hash = $image->set_app13_data({ 80 => [] });
 is( scalar keys %$hash, 1, "value array with zero elements" );
 
 #########################
-$hash = $image->set_IPTC_data({ 90 => ["Milano", "Roma"] }); # City
+$hash = $image->set_app13_data({ 90 => ["Milano", "Roma"] }); # City
 is( scalar keys %$hash, 1, "non repeateable tag (1)" );
 
 #########################
-$hash = $image->set_IPTC_data({ 90 => "Roma" });
+$hash = $image->set_app13_data({ 90 => "Roma" });
 is( scalar keys %$hash, 0, "non repeateable tag (2)" );
 
 #########################
-$hash = $image->set_IPTC_data({ 45 => "ciao" }); # RefereceService
+$hash = $image->set_app13_data({ 45 => "ciao" }); # RefereceService
 is( scalar keys %$hash, 1, "invalid tag" );
 
 #########################
-$hash = $image->set_IPTC_data({ 125 => "\001\377\013" }); # RasterizedCaption
-is( scalar keys %$hash, 0, "binary tag" );
+$hash = $image->set_app13_data({ 125 => "\001\377\013" }); # RasterizedCaption
+is( scalar keys %$hash, 1, "binary tag not passing because of length" );
 
 #########################
-$hash = $image->set_IPTC_data({ 135 => 'I' }); # LanguageIdentifier
+$hash = $image->set_app13_data({ 125 => "z" x 7360 });
+is( scalar keys %$hash, 0, "binary tag now passing" );
+
+#########################
+$hash = $image->set_app13_data({ 135 => 'I' }); # LanguageIdentifier
 is( scalar keys %$hash, 1, "length too small" );
 
 #########################
-$hash = $image->set_IPTC_data({ 135 => "IT" });
+$hash = $image->set_app13_data({ 135 => "IT" });
 is( scalar keys %$hash, 0, "length OK (1)" );
 
 #########################
-$hash = $image->set_IPTC_data({ 135 => "ITA" });
+$hash = $image->set_app13_data({ 135 => "ITA" });
 is( scalar keys %$hash, 0, "length OK (2)" );
 
 #########################
-$hash = $image->set_IPTC_data({ 135 => "ITAL" });
+$hash = $image->set_app13_data({ 135 => "ITAL" });
 is( scalar keys %$hash, 1, "length too large" );
 
 #########################
-$hash = $image->set_IPTC_data({ 3 => "ciao:ate" }); # ObjectTypeReference
+$hash = $image->set_app13_data({ 3 => "ciao:ate" }); # ObjectTypeReference
 is( scalar keys %$hash, 1, "invalid regex (1)" );
 
 #########################
-$hash = $image->set_IPTC_data({ 3 => "riga\nacapo" }); # ObjectName
+$hash = $image->set_app13_data({ 3 => "riga\nacapo" }); # ObjectName
 is( scalar keys %$hash, 1, "invalid regex (2)" );
 
 #########################
-$hash = $image->set_IPTC_data({ 10 => 9 }); # Urgency
+$hash = $image->set_app13_data({ 10 => 9 }); # Urgency
 is( scalar keys %$hash, 1, "invalid regex (3)" );
 
 #########################
-$hash = $image->set_IPTC_data({ 120 => "uno\fdue" }); # Caption/Abstract
+$hash = $image->set_app13_data({ 120 => "uno\fdue" }); # Caption/Abstract
 is( scalar keys %$hash, 1, "form feed not allowed in 'paragraph'" );
 
 #########################
@@ -98,13 +102,13 @@ $bighash = {
     'SupplementalCategory'        => [ "alci", "daini", "capri oli" ],
     'FixtureIdentifier'           => "paperino",
     'ContentLocationCode'         => "ABC",
-    'ReleaseDate'                 => "12341230",
+    'ReleaseDate'                 => "19341230",
     'ReleaseTime'                 => "130612+0100",
     'ActionAdvised'               => "03",
     'ObjectCycle'                 => 'p',
     'Country/PrimaryLocationCode' => "ITA",
     'Caption/Abstract'            => "line 1\nline 2\n\rline 3",
-    'RasterizedCaption'           => "\013\000\001\135\377\254",
+    'RasterizedCaption'           => "\013" x 7360,
     'ImageType'                   => "9R",
     'ImageOrientation'            => 'L',
     'LanguageIdentifier'          => "it",
@@ -112,7 +116,7 @@ $bighash = {
     'AudioSamplingRate'           => 928346,
     'AudioSamplingResolution'     => 20,
     'AudioDuration'               => 121325 };
-$hash = $image->set_IPTC_data($bighash);
+$hash = $image->set_app13_data($bighash);
 is( scalar keys %$hash, 0, "a group of valid tags" );
 
 ### Local Variables: ***
