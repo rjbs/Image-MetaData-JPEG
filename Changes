@@ -1,3 +1,153 @@
+2004-12-06  Stefano Bettelli  <bettelli@cpan.org>
+
+        * saved current version as Image-MetaData-JPEG-0.13, posted to CPAN.
+	This is a bug-fixing release; corrections with respect to v.0.12 are:
+	--) using 'REPLACE' on an IFD does not erase its sub IFD's;
+	--) test of infinities and not-a-number's (more general regexps);
+	--) ComponentsConfiguration, FileSource and SceneType records default
+	    values are now binary (they were erroneously strings);
+	--) standard SubIFD tags now prevail over company-related ones;
+	--) FlashEnergy, SpatialFrequencyResponse, FocalPlaneXResolution,
+	    FocalPlaneYResolution, FocalPlaneResolutionUnit, ExposureIndex,
+	    SensingMethod, CFAPattern can now be set only in SubIFD;   
+	--) improvements to documentation
+	
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_interop): 
+	the MakerNote hook is commented out, because I need to commit
+	a bug-fixing realease. 
+
+	* lib/Image/MetaData/JPEG/MakerNotes.pod: added a discussion on
+	the problem of MakerNote corruption in the MakerNote documentation.
+
+	* lib/Image/MetaData/JPEG.pod: added a note about the jhead
+	program in the "OTHER PACKAGES" section (why was this missing?)
+
+2004-12-01  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG.pod: split the documentation into three
+	distinct files, because it was becoming too long: JPEG.pod (usage
+	and prototypes), JPEG/Structures.pod (general information about the
+	structure of JPEG files) and JPEG/TagLists.pod (valid values for 
+	various numerical tags). There will be also a JPEG/MakerNotes.pod
+	file containing MakerNote discussions only.
+
+2004-11-25  Stefano Bettelli  <bettelli@cpan.org>
+
+        * saved as version 0.12b, sent to users for comments
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (set_Exif_data):
+	terrible bugs today! Remeber that, even for $action eq REPLACE, we
+	cannot delete all the records. We must preserve $REFERENCE records,
+	otherwise the corresponding directories would be forgotten; we
+	don't want that, for instance, SubIFD is deleted when the records
+	of IFD0 are REPLACEd. Tests added to t/JPEG_5_exif_IFD.t. There is
+	still a problem: how do we delete (sub)IFD's completely, e.g., the
+	GPS IFD? This point must be addressed at a later stage.
+	
+	* lib/Image/MetaData/JPEG/Tables.pm ($HASH_APP1_IFD01_COMPANIES):
+	the following company-related fields are now marked as invalid
+	because they are present also in the SubIFD section (with different
+	numerical values) and I don't want the two entries to collide when
+	setting IMAGE_DATA (thanks to Jody Harris for pointing me to the bug).
+	Tests added to t/JPEG_5_exif_IMAGE.t
+	
+	Record Name                 Tag in SubIFD  Tag in IFD*
+	--------------------------  -------------  -----------
+	'FlashEnergy'                   0xa20b       0x920b
+	'SpatialFrequencyResponse'      0xa20c       0x920c
+	'FocalPlaneXResolution'         0xa20e       0x920e
+	'FocalPlaneYResolution'         0xa20f       0x920f
+	'FocalPlaneResolutionUnit'      0xa210       0x9210
+	'ExposureIndex'                 0xa215       0x9215
+	'SensingMethod'                 0xa217       0x9217
+	'CFAPattern'                    0xa302       0x828e
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (set_Exif_data): when
+	$what is 'IMAGE_DATA', try to insert first into SubIFD, then, into
+	IFD0. This favours SubIFD standard tags in front of IFD company-
+	related non-standard tags. For security reasons however, these
+	non-standard tags are labelled as invalid in Tables.pm: this prevents
+	them from being set but not from being recognised if present.
+
+	* lib/Image/MetaData/JPEG/Tables.pm ($HASH_APP1_SUBIFD_MANDATORY): 
+	the 'ComponentsConfiguration' mandatory record was erroneously set
+	to '1230', but it is really "\001\002\003\000". Tests corrected.
+	A detailed analysis of Tables.pm revealed that the 'FileSource'
+	and 'SceneType' records suffered the same problem (also corrected).
+
+2004-11-21  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Record.pm (string_manipulator): the
+	reworked string is written in a fixed length field only if the
+	string was shortened (this avoids ugly trailing spaces). The
+	t/test_photo.desc was updated.
+
+2004-11-20  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_interop): code
+	refactoring and clarification. There is now a check that the data
+	area of the Interoperability array (for $size's larger than 4)
+	exists and has the correct size (this avoids trying to read it if
+	the data area offset points out of the segment). Also, if $tag
+	corresponds to a MakerNote, and we are in the correct SubIFD, the
+	MakerNote parser is called.
+
+2004-11-19  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_ifd): new
+	flexibility: if $no_next is -1, the "next IFD" link is not even
+	read (and so, $$offset_ref advances four bytes less). In this case
+	the final test about $no_next never fails. The "next IFD link" is
+	sometimes missing in MakerNotes.
+	
+        * saved as version 0.12a, sent to Martin for comments
+	
+	* t/JPEG_p_podchecker.t: modified the POD tests; it now relies on
+	the number of potential syntax problems returned by podchecker()
+	instead of relying on the message generated by parse_from_file().
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_makernote): 
+	draft method for MakeNote parsing, this time it works better.
+	
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_TIFF_header): 
+	there is now a second optional argument, specifying an offset
+	pointing to the beginning of the desired TIFF structure, with
+	default value 0. In normal Exif APP1 segments it is always zero,
+	but this allows for some flexibility explited by MakerNote readers.
+
+2004-11-18  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_ifd): the
+	reference address for offsets we are going to read is usually the
+	TIFF base. But some MakerNotes use a different approach, so a new
+	variable ($base) is introuduced allowing for a different base. The
+	argument list of parse_ifd is now ($this, $dirnames, $link,
+	$tiff_base, $offset_ref, $no_next, $base).	
+
+2004-11-17  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Record.pm (get_description): the textual
+	description for a tag not corresponding to a key of %$section_hash
+	is now "?? Unknown record ??", not "?? Unknown record type ??";
+	moreover, if the corresponding value is not defined the description
+	becomes "?? Nameless record ??", not (this is new, and allows for
+	more descriptive hashes in Tables.pm). Test files updated.
+
+2004-11-03  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG.pod: added a link (with L<...>) to the
+	ExifTool script and the Image::ExifTool module by Phil Harvey,
+	which are now on the CPAN archive.
+
+	* t/JPEG_0_records.t (tests on infinities and not-a-numbers):
+	these tests are now implemented as case-insensitive pattern matches,
+	because the strings printed for these special IEEE cases are
+	system-dependent; e.g., 'inf' can become 'Inf' or 'Infinity' or
+	'1.#INF'. I am currently matching against $notnums[$_], where 
+	@notnums = (qr/NAN/i, qr/^[^-]*INF/i, qr/-.*INF/i) (note the 'i',
+	for case-insensitive match). Thanks to Jost Krieger, cpansmoker
+	and the cpan-testers group for help in spotting this bug.
+
 2004-11-02  Stefano Bettelli  <bettelli@cpan.org>
 
         * saved current version as Image-MetaData-JPEG-0.12, posted to CPAN

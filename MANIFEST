@@ -35,4 +35,7 @@ lib/Image/MetaData/JPEG/Segment_dumpers.pl
 lib/Image/MetaData/JPEG/Segment_parsers.pl
 lib/Image/MetaData/JPEG/Segment.pm
 lib/Image/MetaData/JPEG/Tables.pm
+lib/Image/MetaData/JPEG/Structures.pod
+lib/Image/MetaData/JPEG/TagLists.pod
+lib/Image/MetaData/JPEG/MakerNotes.pod
 META.yml

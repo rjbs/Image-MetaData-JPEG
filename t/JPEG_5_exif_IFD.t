@@ -7,7 +7,7 @@ use Image::MetaData::JPEG::Tables qw(:Lookups);
 my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
-my ($image, $image2, $seg, $hash, $hash2, $d1, $d2, $dt, $ref);
+my ($image, $image2, $seg, $hash, $hash2, $d1, $d2, $dt, $ref, $ref2);
 my $val = sub { return JPEG_lookup('APP1@IFD0', $_[0]) }; # IFD0/1 indifferent
 
 my $IFD_data = {
@@ -50,7 +50,7 @@ my $calculated = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (IFD01_DATA)";
-plan tests => 46;
+plan tests => 54;
 #=======================================
 
 #########################
@@ -65,6 +65,22 @@ is_deeply( $hash, {}, "all test IFD0 records ADDed" );
 #########################
 $hash = $seg->set_Exif_data($IFD_data, 'IFD1_DATA', 'ADD');
 is_deeply( $hash, {}, "... added also to IFD1" );
+
+#########################
+$ref = $seg->search_record_value('IFD0');
+isnt( $ref, undef, "... the IFD0 is still present" );
+
+#########################
+$ref2 = $seg->search_record_value('GPS', $ref);
+isnt( $ref2, undef, "... also the IFD0\@GPS directory" );
+
+#########################
+$ref = $seg->search_record_value('SubIFD', $ref);
+isnt( $ref, undef, "... also the IFD0\@SubIFD directory" );
+
+#########################
+$ref = $seg->search_record_value('Interop', $ref);
+isnt( $ref, undef, "... also the IFD0\@SubIFD\@Interop dir." );
 
 #########################
 $hash = $seg->set_Exif_data($calculated, 'IFD0_DATA', 'ADD');
@@ -83,6 +99,22 @@ is_deeply( $hash, {}, "REPLACing in IFD0 works" );
 #########################
 $hash = $seg->set_Exif_data($IFD_data, 'IFD1_DATA', 'REPLACE');
 is_deeply( $hash, {}, "... also in IFD1 works" );
+
+#########################
+$ref = $seg->search_record_value('IFD0');
+isnt( $ref, undef, "... the IFD0 is still present" );
+
+#########################
+$ref2 = $seg->search_record_value('GPS', $ref);
+isnt( $ref2, undef, "... also the IFD0\@GPS directory" );
+
+#########################
+$ref = $seg->search_record_value('SubIFD', $ref);
+isnt( $ref, undef, "... also the IFD0\@SubIFD directory" );
+
+#########################
+$ref = $seg->search_record_value('Interop', $ref);
+isnt( $ref, undef, "... also the IFD0\@SubIFD\@Interop dir." );
 
 #########################
 $hash = $seg->set_Exif_data($calculated, 'IFD0_DATA', 'REPLACE');

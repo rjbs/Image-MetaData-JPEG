@@ -31,8 +31,8 @@ my $IMAGE_data = {
     &$val('ImageUniqueID')            => ['123789cd90ffa890' . "\000" x 17],
     '_OwnerName'                      =>  "Owner's Name: Stefano Bettelli\000",
     '_MoireFilter'                    =>  'Moire Filter: OFF',
-    'FileSource'                      => ['3'],
-    'SceneType'                       =>  1,
+    'FileSource'                      => ["\003"],
+    'SceneType'                       =>  "\001",
     # there are two CFAPattern's !!!
     &$val('CFAPattern')               =>  "\000\003\000\003342623342",
     'ExposureMode'                    => [ 2 ],
@@ -70,7 +70,7 @@ my $IMAGE_data = {
     &$val('ImageDescription')         => 'spiaggia di Marina Romea',
 };
 
-my $cannotbeset = {
+my $cannot_be_set = {
     'ImageWidth'                      => 640,
     'ImageLength'                     => 480,
     'BitsPerSample'                   => [8, 8, 8],
@@ -80,7 +80,7 @@ my $cannotbeset = {
     'ColorSpace'                      => 'xxx',
     'ExifVersion'                     => '9999',
     'DateTimeOriginal'                => '1994:23:23 12:14:61',
-    'ComponentsConfiguration'         => '4650',
+    'ComponentsConfiguration'         => "\004\006\005\000",
     'BrightnessValue'                 => [-4],
     'LightSource'                     => 16,
     'Flash'                           => 26,
@@ -99,9 +99,20 @@ my $cannotbeset = {
     'InteroperabilityOffset'          => 'calculated',
 };
 
+my $must_go_into_SubIFD = {
+    'FlashEnergy'                     => [36, 10],
+    'SpatialFrequencyResponse'        => ["\000P&\037cc.\002\005kl"],
+    'FocalPlaneXResolution'           => [3072000, 892],
+    'FocalPlaneYResolution'           => [2048000, 595],
+    'FocalPlaneResolutionUnit'        => [2],
+    'ExposureIndex'                   => [200, 1],
+    'SensingMethod'                   => ['7'],
+    'CFAPattern'                      => ["\000\003\000\003342623342"],
+};
+
 #=======================================
 diag "Testing APP1 Exif data routines (IMAGE_DATA & ROOT_DATA)";
-plan tests => 30;
+plan tests => 47;
 #=======================================
 
 #########################
@@ -110,18 +121,28 @@ $hash = $image->set_Exif_data($IMAGE_data, 'IMAGE_DATA', 'ADD');
 is_deeply( $hash, {}, "all test IMAGE records ADDed" );
 
 #########################
-$hash = $image->set_Exif_data($cannotbeset, 'IMAGE_DATA', 'ADD');
-is( scalar keys %$hash, scalar keys %$cannotbeset,
+$hash = $image->set_Exif_data($cannot_be_set, 'IMAGE_DATA', 'ADD');
+is( scalar keys %$hash, scalar keys %$cannot_be_set,
     "all forbidden records are rejected" );
+
+#########################
+$hash = $image->set_Exif_data($cannot_be_set, 'IMAGE_DATA', 'REPLACE');
+is( scalar keys %$hash, scalar keys %$cannot_be_set,
+    "all forbidden records rejected when replacing" );
+
+#########################
+$hash = $image->set_Exif_data($must_go_into_SubIFD, 'IMAGE_DATA', 'REPLACE');
+is_deeply( $hash, {}, "all records which should go to SubIFD accepted" );
+
+#########################
+$hash = $image->get_Exif_data('SUBIFD_DATA', 'TEXTUAL');
+ok( exists $$hash{$_}, "... $_ found in SubIFD" ),
+    is_deeply( $$hash{$_}, $$must_go_into_SubIFD{$_}, "... its value is OK" )
+    for keys %$must_go_into_SubIFD;
 
 #########################
 $hash = $image->set_Exif_data($IMAGE_data, 'IMAGE_DATA', 'REPLACE');
 is_deeply( $hash, {}, "REPLACing in the image works" );
-
-#########################
-$hash = $image->set_Exif_data($cannotbeset, 'IMAGE_DATA', 'REPLACE');
-is( scalar keys %$hash, scalar keys %$cannotbeset,
-    "all forbidden records rejected when replacing" );
 
 #########################
 $image->set_Exif_data({}, 'IMAGE_DATA', 'REPLACE');

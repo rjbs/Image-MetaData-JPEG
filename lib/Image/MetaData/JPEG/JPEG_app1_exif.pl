@@ -349,6 +349,19 @@ sub get_Exif_data {
 # special private method). $data undefined DOES NOT erase #
 # the thumbnail, it is an error (too dangerous).          #
 # ------------------------------------------------------- #
+# When $what is 'IMAGE_DATA', try to insert first into    #
+# SubIFD, then, into IFD0. This favours SubIFD standard   #
+# tags in front of IFD company-related non-standard tags. #
+# For security reasons however, these non-standard tags   #
+# should be labelled as invalid: this would prevent them  #
+# from being set but not from being recognised if present.#
+# ------------------------------------------------------- #
+# Remeber that, even for $action eq REPLACE, we cannot    #
+# delete all the records. We must preserve $REFERENCE     #
+# records, otherwise the corresponding directories would  #
+# be forgotten; we don't want that, for instance, SubIFD  #
+# is deleted when the records of IFD0 are REPLACEd.       #
+# ------------------------------------------------------- #
 # First, some basic argument checking is performed: the   #
 # segment must be of the appropriate type, $data must be  #
 # a hash reference, $action and $what must be valid.      #
@@ -370,12 +383,11 @@ sub set_Exif_data {
     # return immediately if $data is undefined
     return {'ERROR'=>'Undefined data reference'} unless defined $data;
     # ========= SPECIAL CASES ====================================
-    # IMAGE_DATA means IFD0_DATA and SUBIFD_DATA (merged); we first try
-    # to insert all tags into IFD0, then we try to insert rejected data
-    # into SubIFD, last we return doubly rejected data.
+    # IMAGE_DATA: first, try to insert all tags into SubIFD, then, try
+    # to insert rejected data into IFD0, last, return doubly rejected data.
     if ($what eq 'IMAGE_DATA') {
-	my $rejected = $this->set_Exif_data($data, 'IFD0_DATA', $action);
-	return $this->set_Exif_data($rejected, 'SUBIFD_DATA', $action); }
+	my $rejected = $this->set_Exif_data($data, 'SUBIFD_DATA', $action);
+	return $this->set_Exif_data($rejected, 'IFD0_DATA', $action); }
     # THUMBNAIL requires a very specific treatment
     return $this->set_Exif_thumbnail($data) if $what eq 'THUMBNAIL';
     # 'THUMB_DATA' is an alias to 'IFD1_DATA'
@@ -401,8 +413,10 @@ sub set_Exif_data {
     my ($rejected, $accepted) = $this->screen_records($data, $path);
     # For $action equal to 'ADD', we read the old records and insert
     # them in the $accepted hash, unless they are already present.
-    # If $action is 'REPLACE' we completely forget about the past.
-    complement_records($record_list, $accepted) if $action eq 'ADD';
+    # If $action is 'REPLACE' we preserve only the subdirectories
+    my $save = $action eq 'REPLACE' ? 'p' : '.';
+    my $old_records = [ grep {$_->get_category() =~ $save} @$record_list ];
+    complement_records($old_records, $accepted);
     # retrieve the section about mandatory values for this $path and transform
     # them into Records (there is also a syntactical analysis, but all records
     # should be accepted here, so I take the return value in scalar context).

@@ -11,7 +11,7 @@ no  integer;
 use strict;
 use warnings;
 
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 
 ###########################################################
 # Load other parts for this package. In order to avoid    #

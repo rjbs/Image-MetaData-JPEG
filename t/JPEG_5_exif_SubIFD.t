@@ -35,8 +35,8 @@ my $SubIFD_data = {
     &$val('FocalPlaneResolutionUnit') =>  3,
     &$val('SubjectLocation')          => [13, 19],
     &$val('SensingMethod')            =>  '7',
-    'FileSource'                      => ['3'],
-    'SceneType'                       =>  1,
+    'FileSource'                      => [ "\003" ],
+    'SceneType'                       =>  "\001",
     'CFAPattern'                      =>  "\000\003\000\003342623342",
     'ExposureMode'                    => [ 2 ],
     &$val('WhiteBalance')             => [1],
@@ -49,7 +49,7 @@ my $SubIFD_data = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (SUBIFD_DATA)";
-plan tests => 40;
+plan tests => 45;
 #=======================================
 
 #########################
@@ -88,7 +88,7 @@ $hash = $seg->get_Exif_data('SUBIFD_DATA', 'TEXTUAL');
 is_deeply( $$hash{'ExifVersion'}, ['0220'], "Automatic ExifVersion works" );
 
 #########################
-is_deeply( $$hash{'ComponentsConfiguration'}, ['1230'],
+is_deeply( $$hash{'ComponentsConfiguration'}, ["\001\002\003\000"],
 	   "Automatic ComponentsConfiguration works" );
 
 #########################
@@ -162,9 +162,30 @@ $hash = $image->set_Exif_data({'DateTimeOriginal'=>$dt}, 'SUBIFD_DATA', 'ADD');
 ok( ! exists $$hash{&$val('DateTimeOriginal')}, "Blank date/time accepted(2)");
 
 #########################
-$hash = $image->set_Exif_data({'ComponentsConfiguration' => '4650'},
-			      'SUBIFD_DATA', 'ADD');
+$hash = $image->set_Exif_data
+    ({'ComponentsConfiguration' => "\004\006\005\000"}, 'SUBIFD_DATA', 'ADD');
 ok( exists $$hash{&$val('ComponentsConfiguration')}, "Invalid CCfg rejected" );
+
+#########################
+$hash = $image->set_Exif_data
+    ({'ComponentsConfiguration' => '1230'}, 'SUBIFD_DATA', 'ADD');
+ok( exists $$hash{&$val('ComponentsConfiguration')}, "'Char' CCfg rejected" );
+
+#########################
+$hash = $image->set_Exif_data({'FileSource' => '3'}, 'SUBIFD_DATA', 'ADD');
+ok( exists $$hash{&$val('FileSource')}, "'Char' FileSource rejected" );
+
+#########################
+$hash = $image->set_Exif_data({'FileSource' => 3}, 'SUBIFD_DATA', 'ADD');
+ok( exists $$hash{&$val('FileSource')}, "Numeric FileSource rejected" );
+
+#########################
+$hash = $image->set_Exif_data({'SceneType' => '1'}, 'SUBIFD_DATA', 'ADD');
+ok( exists $$hash{&$val('SceneType')}, "'Char' SceneType rejected" );
+
+#########################
+$hash = $image->set_Exif_data({'SceneType' => 1}, 'SUBIFD_DATA', 'ADD');
+ok( exists $$hash{&$val('SceneType')}, "Numeric SceneType rejected" );
 
 #########################
 $hash = $image->set_Exif_data({'BrightnessValue'=>[-4]}, 'SUBIFD_DATA', 'ADD');

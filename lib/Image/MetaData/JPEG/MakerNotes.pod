@@ -1,0 +1,69 @@
+###########################################################
+# A Perl package for showing/modifying JPEG (meta)data.   #
+# Copyright (C) 2004 Stefano Bettelli                     #
+# See the COPYING and LICENSE files for license terms.    #
+###########################################################
+
+###########################################################
+# This file contains only the package man-page in perldoc #
+# format. In order to visualise it, it is sufficient to   #
+# type "perldoc <name_of_this_file>".                     #
+###########################################################
+
+=head1 RANDOM INFORMATION ON MAKERNOTES
+
+This document is an appendix to the main manual page of the
+L<Image::MetaData::JPEG> module, which the reader should refer to for
+further details and the general scope.
+
+=head2 On the problem of MakerNote corruption
+
+A widespread problem with Exif I<maker notes> is that there is no common
+standard for how to parse and rewrite the information in the I<MakerNote>
+data area. This is the reason why most programs dealing with Exif JPEG
+files corrupt the MakerNote on saving, or decide to drop it altogether (be
+aware that there exist programs known to hang when they try to read a
+corrupt maker note).
+
+In fact, many maker notes contain a non-standard I<IFD> structure, with
+some tags storing file offsets (see the documentation page describying the
+L<IFD structure|Image::MetaData::JPEG::Structures/Structure of an Exif APP1
+segment>). Therefore, saving a maker note without regard for internal
+offsets's adjustment reduces the note mostly to garbage. Re-dumping a maker
+note after changing the Exif APP1 segment endianness incurs the same
+problem, because no internal byte-swap is performed.
+
+It is possible to try to cure some maker note corruption problems,
+if the reader program is a little "brave". For example, the number
+of tags in an IFD-like maker note is always in the range [1,255],
+so the two-bytes tag count has always the most significant byte set
+to zero: therefore, a simple check allows for the determination of the
+correct byte order (endianness). Also, most often the maker note data
+area begins just after the tag list, so, if the first detected offset
+is patently wrong, it can be rescaled, as all of the following ones,
+to point to this spot; alternatively, all data blocks can be read in
+sequence from this spot, independently of stored offset values.
+
+=head1 AUTHOR
+
+Stefano Bettelli, B<bettelli@cpan.org>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (C) 2004 by Stefano Bettelli
+
+This library is free software; you can redistribute it and/or modify it
+under the terms of the GNU L<General Public License|perlgpl>. See the
+COPYING and LICENSE file for the license terms.
+
+=head1 SEE ALSO
+
+The main documentation page for the L<Image::MetaData::JPEG> module.
+
+=cut
+
+### Local Variables: ***
+### mode:perl ***
+### fill-column:75 ***
+### ispell-dictionary: "british" ***
+### End: ***

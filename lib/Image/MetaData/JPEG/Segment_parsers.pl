@@ -348,6 +348,12 @@ sub parse_app1_exif {
 # number 14), the offset of the TIFF header start, the    #
 # offset of the 0-th IFD with respect to the TIFF header  #
 # start, and the endianness.                              #
+#---------------------------------------------------------#
+# There is now a second optional argument, specifying an  #
+# offset pointing to the beginning of the desired TIFF    #
+# structure, with default value 0. In normal Exif APP1    #
+# segments it is always zero, but this allows for some    #
+# flexibility explited by MakerNote readers.              #
 #=========================================================#
 # The first two bytes of the TIFF header give the byte    #
 # alignement (endianness): either 0x4949='II' for "Intel" #
@@ -361,10 +367,13 @@ sub parse_app1_exif {
 #   Japan Electronic Industry Development Assoc. (JEIDA)  #
 ###########################################################
 sub parse_TIFF_header {
-    my ($this, $good_identifier) = @_;
-    my $offset = 0;
+    my ($this, $good_identifier, $offset) = @_;
+    # set $offset to zero if it is undefined
+    $offset = 0 if ! defined $offset;
     # at least 8 bytes for the TIFF header + identifier length
-    $this->test_size(8 + length $good_identifier, "TIFF header too small");
+    # (remember you should count them starting from $offset)
+    $this->test_size($offset + 8 + length $good_identifier,
+		     "not enough space for the TIFF header");
     # decode the identifier (get its length from $good_identifier)
     my $identifier = $this->store_record
 	('Identifier', $ASCII, $offset, length $good_identifier)->get_value();
@@ -403,9 +412,14 @@ sub parse_TIFF_header {
 # TIFF base is necessary because some records in the IFD  #
 # must be interpreted as offsets relative to it). An op-  #
 # tional boolean flag produces a warning if set to true   #
-# while the next_link pointer is non-zero. This method    #
-# returns the next_link pointer, and updates the current  #
-# offset in the object's data area.                       #
+# while the next_link pointer is non-zero. Another optio- #
+# nal variable sets an address base different from the    #
+# TIFF base. This method returns the next_link pointer,   #
+# and updates the current object's data area offset.      #
+# ------------------------------------------------------- #
+# If $no_next is -1, the "next IFD" link is not even read #
+# (and so, $$offset_ref advances four bytes less). In     #
+# this case the final test about $no_next never fails.    #
 # ======================================================= #
 # The block name is indeed a '@' separated list of names, #
 # which are to be interpreted in sequence; for instance   #
@@ -435,12 +449,17 @@ sub parse_TIFF_header {
 #   .......       additional data area                    #
 ###########################################################
 sub parse_ifd {
-    my ($this, $dirnames, $link, $tiff_base, $offset_ref, $no_next) = @_;
+    my ($this, $dirnames, $link, $tiff_base,
+	$offset_ref, $no_next, $opt_offset_base) = @_;
     # if $link is undefined, return immediately
     return unless defined $link;
     # this IFD starts at position $link with respect to the TIFF header
     # base. If this is not the current position, $offset must be updated
     $$offset_ref = $tiff_base + $link;
+    # the reference address for offsets we are going to read is usually
+    # the TIFF base. But some MakerNotes use a different approach, so
+    # a new variable is introuduced allowing for a different base
+    my $offset_base = defined $opt_offset_base ? $opt_offset_base : $tiff_base;
     # the first two bytes give the number of Interoperability arrays.
     # Don't insert this value into the record list, just read it.
     my $ifd_records = $this->read_record($SHORT, $$offset_ref);
@@ -449,18 +468,20 @@ sub parse_ifd {
     # of dir names in $dirnames (to be interpreted in sequence)
     my $dirref = undef; $dirref =
 	$this->provide_subdirectory($_, $dirref) for(split /@/, $dirnames);
-    # parse all the records in the IFD; additional data might
-    # be referenced through pointers relative to the tiff header
-    # base. This populates the $$dirref list with IFD records.
+    # parse all the records in the IFD; additional data might be referenced
+    # through offsets relative to the address base (usually, the tiff header
+    # base). This populates the $$dirref list with IFD records.
     $$offset_ref = $this->parse_interop
-	($$offset_ref, $tiff_base, $dirref) for (1..$ifd_records);
+	($$offset_ref, $offset_base, $dirref) for (1..$ifd_records);
     # I used to complain in case no entry was present in this
     # IFD (c'est louche!), but it turned out this is of no use
     #### warn "No entries found in $dirnames" unless (@$dirref);
-    # after the IFD records there can be a link to the next
-    # IFD; this is an unsigned long, i.e. 4 bytes. If there
-    # is no next IFD, these bytes are 0x00000000.
-    my $next_ifd_link = $this->read_record($LONG, $$offset_ref);
+    # after the IFD records there can be a link to the next IFD; this
+    # is an unsigned long, i.e. 4 bytes. If there is no next IFD,
+    # these bytes are 0x00000000. If $no_next is -1, we don't try to
+    # read these 4 bytes (and $$offset_ref is not advanced).
+    my $next_ifd_link = ($no_next && $no_next == -1) ? undef : 
+	$this->read_record($LONG, $$offset_ref);
     # take care of possible subdirectories. First, create a
     # string with the current IFD or sub-IFD path name.
     my $path = join '@', $this->{name}, $dirnames;
@@ -476,7 +497,7 @@ sub parse_ifd {
 	    # get the location of this secondary IFD and parse it
 	    my $extended_dirnames = join '@', $dirnames, $$mapping{$tag};
 	    $this->parse_ifd($extended_dirnames, $record->get_value(),
-			     $tiff_base, $offset_ref, 1);
+			     $tiff_base, $offset_ref, 1, $opt_offset_base);
 	    # mark the record containing the offset to the newly created
 	    # IFD by setting its "extra" field. This record isn't any more
 	    # interesting after we have used it, and should be recalculated
@@ -508,71 +529,125 @@ sub parse_ifd {
 #     bytes 8-11  Value Offset (value or offset)          #
 #                                                         #
 # Types are the same as for the Record class. The "value  #
-# offset" records the offset from the TIFF header where   #
-# the value is recorded. It contains the actual value if  #
-# it is not larger than 4 bytes (32 bits). If the value   #
-# is shorter than 4 bytes, it is recorded in the lower    #
-# end of the 4-byte area (smaller offsets).               #
+# offset" contains an offset from the address base where  #
+# the value is recorded (this is usually the TIFF header  #
+# base). It contains the actual value if it is not larger #
+# than 4 bytes (32 bits). If the value is shorter than 4  #
+# bytes, it is recorded in the lower end of the 4-byte    #
+# area (smaller offsets).                                 #
 #=========================================================#
 # The routine returns the offset value increased by the   #
 # number of bytes which were read (i.e. $offset + 12).    #
 ###########################################################
 sub parse_interop {
-    my ($this, $offset, $tiff_base, $dirref) = @_;
+    my ($this, $offset, $offset_base, $dirref) = @_;
     # the data area must be at least 12 bytes wide
     $this->test_size(12, "initial bytes check");
-    # read the content of the first three fields
-    # (without inserting them in any record list!)
-    my $tag   = $this->read_record($SHORT, $offset);
-    my $type  = $this->read_record($SHORT, $offset);
-    my $count = $this->read_record($LONG , $offset);
+    # read the content of the four fields of the Interoperability array,
+    # without inserting them in any record list. Interpret the last field
+    # as an unsigned long integer, even if this is not the case
+    my $tag     = $this->read_record($SHORT, $offset);
+    my $type    = $this->read_record($SHORT, $offset);
+    my $count   = $this->read_record($LONG , $offset);
+    my $doffset = $this->read_record($LONG , $offset);
     # ask the record class to calculate the number of bytes necessary
     # to store the value (the type size times the number of items).
     my $size = Image::MetaData::JPEG::Record->get_size($type, $count);
     # if $size is zero, it means that the Record type is variable-length;
     # in this case, $size should be given by $count
     $size = $count if $size == 0;
-    # prepare a string with the content of the last four bytes in
-    # the Interoperability array (or with its low address part if
-    # $size is smaller than four); then, update the offset (always +4)
-    my $field = $this->data($offset, $size <= 4 ? $size : 4);
-    $offset += 4;
-    # Insert the Interoperability array value into its sub-directory
-    $this->store_record($dirref, $tag, $type, $size > 4 ?
-			# if $size is larger than four, use the last four bytes
-			# of the Interoperability array as an offset relative
-			# to $tiff_base, and read the true value.
-			\$this->data($tiff_base + 
-				     $this->read_record($LONG, \$field), $size)
-			# if $size is less or equal to four, the data can be
-			# read directly in the last four bytes (if it is even
-			# shorter, the low address bytes are to be taken).
-			: \$field, $count);
+    # tune the offset of the data area (always relative to $offset_base).
+    # If $size is larger than 4, $doffset is already OK. However, if
+    # $size is less or equal to 4 we must point it to its own 4 bytes.
+    $doffset = $offset - 4 - $offset_base if $size < 5;
+    # Check that the data area exists and has the correct size (this
+    # avoids trying to read it if $doffset points out of the segment).
+    $this->test_size($offset_base + $doffset + $size,
+		     "Cannot find the Interoperability array data area");
+    # insert the Interoperability array value into its sub-directory
+    # (don't destroy $doffset, so that we can reuse it later if necesary
+    $this->store_record($dirref, $tag, $type, $offset_base + $doffset, $count);
+    # if $tag corresponds to a MakerNote, and we are in the correct
+    # SubIFD, call the MakerNote parser (using the data area at $doffset)
+#    $this->parse_makernote('IFD0@SubIFD',$dirref,$doffset,$count,$offset_base)
+#	if $tag == JPEG_lookup('APP1@IFD0@SubIFD@MakerNote');
     # return the updated $offset
     return $offset;
 }
 
 ######## to be designed and implemented
-#sub parse_makernote {
-#    return;
-#    my ($this, $dirnames, $makernote, $tiff_base, $offset_ref) = @_;
-#
-#    my @IFD_LIKE_MAKERNOTES = ( "OLYMP\000\001\000",
-#				"FUJIFILM\014\000\000\000" );
-#
-#    for (@IFD_LIKE_MAKERNOTES) {
-#	next unless $makernote =~ $_;
-#	$dirnames .= "_OLYMPUS";
-#
-#	my $link = index $this->data(0, $this->size()), $makernote;
-#	$link += (length $_) - 2;
-#	print "LINK $link\n";
-#
-#	eval { $this->parse_ifd($dirnames, $link, $tiff_base, $offset_ref);};
-#	$this->create_record('MakerNoteError', $ASCII, \$@, length $@) if $@;
-#    }
-#
-#}
+# some MakerNote offsets point outside the data area!!! e.g. Olympus E-20
+sub parse_makernote {
+    my ($this, $dirnames, $subifd_dirref, $mknt_start, $size, $tiff_base) = @_;
+
+    my $aaa = $this->search_record_value('IFD0');
+    my $make  =$this->search_record_value(JPEG_lookup('APP1@IFD0@Make'), $aaa);
+    my $model =$this->search_record_value(JPEG_lookup('APP1@IFD0@Model'),$aaa);
+    return unless $make;
+
+
+    for (keys %$HASH_MAKERNOTES) {
+	my $hash        = $$HASH_MAKERNOTES{$_};
+
+	next if exists $$hash{ignore};
+
+	my $mknt_sigre  = $$hash{signature};
+	my $makesig     = $$hash{maker};
+	my $mknt_offset = $mknt_start + $tiff_base;
+
+
+	next unless $make =~ $makesig;
+	next unless $this->data($mknt_offset, 50) =~ $mknt_sigre;
+
+	my $signature = $1;
+	my $ifd_endianness = $this->{endianness};
+	my $skip = length $signature;
+
+	$this->{endianness} = $$hash{endianness} if exists $$hash{endianness};
+#	$this->{endianness} = $this->data($mknt_offset + $skip, 1) eq "\000"
+#	    ? $BIG_ENDIAN : $LITTLE_ENDIAN;
+
+	my $next_flag = exists $$hash{nonext} ? -1 : 1;
+
+	my $mknt_reference = exists $$hash{mkntstart} ? $mknt_offset : undef;
+
+#	printf "%v02x\n", $this->data($mknt_offset, 80);
+#	print $this->data($mknt_offset, 80), "\n";
+
+	my $mknt_dirname = join '@', $dirnames, 'MakerNote_'.$_;
+
+	my $subifd_dirref = undef; $subifd_dirref =
+	    $this->provide_subdirectory($_,$subifd_dirref)
+	    for(split /@/, $mknt_dirname);
+	$this->store_record($subifd_dirref, 'Signature', $UNDEF, \$signature);
+	$this->store_record($subifd_dirref, 'Size', $LONG, \ pack "N", $size);
+	# -----------------
+	if (exists $$hash{mkntTIFF}) {
+	    ($mknt_reference, my $ntiff_base, my $ifd_link, my $new_endianness)
+		= $this->parse_TIFF_header($signature, $mknt_offset);
+	    $this->{endianness} = $new_endianness;
+	    $skip += 8; }
+	#-----------------
+	if (exists $$hash{special}) {
+	    if ('KODAK' eq $makesig) {	
+		my $tmp_offset = $mknt_offset + $skip;
+		for (sort {$a <=> $b} keys %{$$hash{tags}}) {
+		    my $vec = $$hash{tags}{$_};
+		    $this->store_record($subifd_dirref, $$vec[0],
+					$$vec[1], $tmp_offset, $$vec[2]);
+		}
+	    }
+	} else {
+	    eval { $this->parse_ifd($mknt_dirname, $mknt_start+$skip,
+				    $tiff_base, \ my $dummyref,
+				    $next_flag, $mknt_reference); }; }
+	# ---------------
+	$this->store_record($subifd_dirref, 'MakerNoteError',$ASCII,\$@) if $@;
+	print $@ if $@;
+
+	$this->{endianness} = $ifd_endianness;
+    }
+}
 
 ###########################################################
 # This method parses an APP1 XMP segment. Such an APP1    #

@@ -6,6 +6,8 @@ my ($record, $data, $result, $mykey, $key, $type, $count, $dataref, @v, @w);
 my $trim = sub { (my $file = $::cname) =~ s/::/\//g;
 		 $_[0] =~ s/ at .*$file.*//; chomp $_[0]; $_[0] };
 my @messages = ( "1st value", "2nd value" , "3rd value", "4th value" );
+my @notnums  = (qr/NAN/i, qr/^[^-]*INF/i, qr/-.*INF/i); # case insensitive!
+my @notnames = ('NaN', '+Inf', '-Inf');
 # this stuff is needed for testing floating point numbers
 sub vsum      { my $s = 0; $s += $_ for @_; $s }
 sub pack_ieee { my $v = pack $_[0], $_[1]; $_[2] ? \(scalar reverse $v) : \$v};
@@ -317,9 +319,9 @@ is( $result, $data, "(float) all tested as binary data" );
 
 #########################
 $data = join '', pack 'C*', map { hex } '7FC000007F800000FF800000' =~ /../g;
-@w = ('nan', 'inf', '-inf');
-$record = $::cname->new($mykey, $FLOAT, \$data, scalar @w, $BIG_ENDIAN);
-is( $record->get_value($_), $w[$_], "(float) ".$w[$_]." OK" ) for (0..$#w);
+$record = $::cname->new($mykey, $FLOAT, \$data, scalar @notnums, $BIG_ENDIAN);
+like( $record->get_value($_), $notnums[$_],
+      "(float) " . $notnames[$_] . " OK" ) for (0..$#notnums);
 
 #########################
 $result = $record->get($BIG_ENDIAN);
@@ -409,9 +411,9 @@ is( $result, $data, "(double) all tested as binary data" );
 #########################
 my $zz = '0' x 12;
 $data = join '', pack 'C*', map { hex } "7FF8${zz}7FF0${zz}FFF0${zz}" =~ /../g;
-@w = ('nan', 'inf', '-inf');
-$record = $::cname->new($mykey, $DOUBLE, \$data, scalar @w, $BIG_ENDIAN);
-is( $record->get_value($_), $w[$_], "(double) ".$w[$_]." OK" ) for (0..$#w);
+$record = $::cname->new($mykey, $DOUBLE, \$data, scalar @notnums, $BIG_ENDIAN);
+like( $record->get_value($_), $notnums[$_],
+      "(double) " . $notnames[$_] . " OK" ) for (0..$#notnums);
 
 #########################
 $result = $record->get($BIG_ENDIAN);

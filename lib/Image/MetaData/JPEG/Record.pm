@@ -440,9 +440,9 @@ sub string_manipulator {
     # around the string (the dot remains outside, however).
     $string = "${delim}$string${delim}";
     $string =~ s/^(.*)\\00${delim}$/$1${delim}\./ if $dropnull;
-    # print the reworked string in a fixed length field;
-    # if the string was shortened, add a notice to the end.
-    sprintf('%-'.(3+$maxlen).'s%s', $string, ($left?"($left more chars)":''))
+    # print the reworked string (if the string was shortened,
+    # add a notice to the end and use a fixed length field)
+    sprintf($left ? '%-'.(3+$maxlen)."s($left more chars)" : '%-s', $string);
 }
 
 ###########################################################
@@ -468,11 +468,13 @@ sub get_description {
 	my $section_hash = JPEG_lookup(@$names);
 	# fix the numeric tag
 	$numerictag = $descriptor;
-        # extract a description string; if there is no entry
-	# in the hash for this key, replace the descriptor 
-	# with a sort of error message.
-	$descriptor = exists $$section_hash{$descriptor} ?
-	    $$section_hash{$descriptor} : "?? Unknown record type ??"; }
+        # extract a description string; if there is no entry in the
+	# hash for this key, replace the descriptor with a sort of
+	# error message (non-existent tags differ from undefined ones)
+	$descriptor =
+	    ! exists $$section_hash{$descriptor}  ? "?? Unknown record ??"  :
+	    ! defined $$section_hash{$descriptor} ? "?? Nameless record ??" :
+	    $$section_hash{$descriptor} }
     # calculate an appropriate tabbing
     my $tabbing = " \t" x (scalar @$names);
     # prepare the description (don't make it exceed $maxlen characters)
