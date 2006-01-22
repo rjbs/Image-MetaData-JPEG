@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 
@@ -267,7 +267,7 @@ $$HASH_MAKERNOTES{'Kodak'}{'tags'} =                                         #
   0x0030 => ['FocusMode',          $BYTE,      1, '[023]'                 ], #
   0x0031 => ['---0x0031',          $BYTE,      1, undef                   ], #
   0x0032 => ['---VariousModes_3',  $SHORT,     1, undef                   ], #
-  0x0034 => ['PanoramaMode',       $SHORT,     1, '(0|65535)'             ], #
+  0x0034 => ['PanoramaMode',       $SSHORT,    1, '(0|-1)'                ], #
   0x0036 => ['SubjectDistance',    $SHORT,     1, $re_integer             ], #
   0x0038 => ['WhiteBalance',       $BYTE,      1, '[0-3]'                 ], #
   0x0039 => ['---0x0039',          $UNDEF,    27, undef                   ], #
@@ -294,7 +294,7 @@ $$HASH_MAKERNOTES{'Kodak'}{'tags'} =                                         #
   0x005e => ['ColourMode',         $SHORT,     1, '(1|2|32)'              ], #
   0x0060 => ['DigitalZoomFactor',  $SHORT,     1, $re_integer             ], #
   0x0062 => ['---0x0062',          $BYTE,      1, undef                   ], #
-  0x0063 => ['Sharpness',          $BYTE,      1, '(0|1|255)'             ], #
+  0x0063 => ['Sharpness',          $SBYTE,     1, '(-1|0|1)'              ], #
   0x0064 => ['binary',              $UNDEF,   808, undef                   ], #
 #  0x0064 => ['---0x0064',          $SHORT,     1, undef                   ], #
 #  0x0066 => ['---0x0066',          $SHORT,     1, undef                   ], #

@@ -1,3 +1,251 @@
+2006-01-06  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG.pm: setting $VERSION to 0.15, and
+	posting to CPAN (as soon as my network connection is working).
+	==========================================================
+        Most relevant changes from version 0.141 to 0.15:
+	(see the documentation in the .pod files for more details)
+	==========================================================
+	* IPTC data treatment in APP13 segments extended to deal with more
+	  exotic IPTC record numbers (i.e., other than 2). IPTC setters and
+	  getters (set/get_app13_data) updated to allow for the insertion of
+	  datasets with record number = 1; this provides low level support
+	  for coded character sets (e.g., Unicode strings in IPTC).
+	* Thumbnail replacement via set_Exif_data() made easier; a JPEG
+	  object reference is now accepted as an alternative to a scalar
+	  reference to a (valid) JPEG stream.
+	* Check on the segment length being valid moved to update(). This
+	  anticipates the error condition at the time data is set, not at
+	  the time data are written on disk.
+	* Revised rules for accepted and rejected dates (years). 'DateTime',
+	  'DateTimeOriginal', 'DateTimeDigitized', 'GPSDateStamp', as well
+	  as 'DigitalCreationDate', 'ReleaseDate' and 'ExpirationDate' 
+	  can be set to a date >= 1800AD. The IPTC 'DateCreated' dataset 
+          accepts the full ISO-8601 YYYY-MM-DD format (from 0AD on).
+	* update() is called only once with 'IMAGE_DATA' in set_Exif_data.
+	* Bugfix: the standard value for 'XResolution' and 'YResolution'
+	  is [72, 1], not [1, 72] as before.
+	* Documentation updates: more documentation on canonical IFD0 and
+	  IFD1 tags, on DX3900 Makernotes, on Image::ExifTool capabilities,
+	  more documentation and tests on IPTC and APP13, more examples in
+	  the main .pod file.
+	
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (set_Exif_data): new,
+	strictly private, argument (4th). If set, the update() routine is
+	not called. It is used by set_Exif_data() itself when called with
+	$action eq 'IMAGE_DATA', so that update() can be called only once.
+	
+	* t/JPEG_5_exif_IMAGE.t: added a new test to check that update()
+	is really called only once when $action is 'IMAGE_DATA'.
+
+2006-01-05  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/TagLists.pod: notes added to the "Canonical
+	Exif 2.2 and TIFF 6.0 tags for IFD0 and IFD1" section. Clarifications
+	for 'DateTime', 'DateTimeOriginal', and 'DateTimeDigitized' added.
+
+        * copyright extended to 2006 in all relevant files.
+	
+        * moved to Vienna.
+	
+2005-12-18  Stefano Bettelli  <bettelli@cpan.org>
+
+        * saved as version 0.141c and sent to D.Manpearl for comments.
+	
+	* lib/Image/MetaData/JPEG.pod: new example on how to display all
+	items from a repeatable IPTC record (under get_app13_data).
+
+	* lib/Image/MetaData/JPEG.pod: the documentation of set_Exif_data
+	now explains the new way to deal with thumbnails. There is also an
+	example of how to set and delete a thumbnail.
+
+	* t/JPEG_5_exif_Thumbnail.t: two set_Exif_data calls changed: the
+	argument is now a reference to a JPEG object. This tests the 
+	previous modification for set_Exif_thumbnail.
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (set_Exif_thumbnail): 
+	the argument can now be a reference to an Image::MetaData::JPEG
+	object. In this way, if you want to set a thumbnail from an already
+	existing object you don't need to extract the stream yourself.
+	Thanks to David Manpearl for suggestions on this interface.
+	
+2005-10-26  Stefano Bettelli  <bettelli@cpan.org>
+
+	* saved as version 0.141b and sent to Martin for comments.
+
+	* lib/Image/MetaData/JPEG.pod: section on update() updated.
+
+	* lib/Image/MetaData/JPEG/Segment_dumpers.pl: trivial modifications
+	in some routines. Specialised dumpers now return 'undef' when there
+	are no problems and a message when there is a problem.
+
+	* lib/Image/MetaData/JPEG/Segment.pm (update): this method now
+	saves a reference to the old segment data area and restores it if
+	the specialised update routine fails. This only generate a warning!
+	Are there cleverer ways to handle this case? It is however better
+	to have a corrupt object in memory, than a corrupt object written
+	over the original. Currently, this is restricted to the possibility
+	that an updated segment becomes too large, but all specialised
+	routines must nevertheless return 'undef' meaning there was no error.
+
+	* lib/Image/MetaData/JPEG/Segment.pm (set_data): the 'OVERWRITE'
+	option and the second argument are gone. This method can now be
+	used only to append new data to the segment data area. Blanking
+	the area must be a task for the general update() routine.
+	Appropriate changes to Segment_sumpers.pl applied.
+
+	* lib/Image/MetaData/JPEG/Tables.pm: new module variable for the
+	maximum length of the data area of a standard JPEG segment (this
+	does not apply to entropy-coded data and past-the-end "segments").
+	$JPEG_SEG_MAX_LEN = 2**16 - 3; exported via the JPEGgrammar tag.
+
+2005-10-26  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl (set_app13_data): testing
+	explicitely for a dataset not being 'IPTC/NAA' is no more necessary.
+	Insertion of mandatory datasets much simplified and more robust.
+	(insert_accepted, screen_data): these new routines or methods
+	contain now some of the code previously belonging to set_app13_data,
+	which was really getting too big.
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl (value_is_OK): don't test
+	whether $what is /^IPTC/ or not, just look for a syntax definition
+	for the tag. This makes the routine more robust. Skipping the test
+	on the second value for $what='PHOTOSHOP' is a bit hackish though.
+
+	* lib/Image/MetaData/JPEG/Tables.pm: syntax specifications added to
+	%$HASH_PHOTOSHOP_GENERAL. They are currently just placeholder, but
+	this could change in future. The only effect is to inhibit a direct
+	assignement of the 'IPTC/NAA' dataset, which must be modified with
+	specialised routines.
+	
+2005-10-25  Stefano Bettelli  <bettelli@cpan.org>
+
+	* saved as version 0.141a
+
+	* lib/Image/MetaData/JPEG.pod: prepared a clearer (?) and more
+	consistent SYNOPSIS (thanks to Julio Otuyama for this remark).
+
+	* lib/Image/MetaData/JPEG/TagLists.pod: trivial changes to
+	be consistent with the new rules on dates and centuries.
+
+	* t/JPEG_4_app13_IPTC.t: more tests on 'DigitalCreationDate',
+	'ReleaseDate', 'ExpirationDate', and expecially 'DateCreated'.
+	* t/JPEG_5_exif_GPS.t: more tests on 'GPSDateStamp'.
+	* t/JPEG_5_exif_IFD.t: more tests on 'DateTime'.
+	* t/JPEG_5_exif_SubIFD.t: more tests on 'DateTimeOriginal/Digitized'.
+
+	* lib/Image/MetaData/JPEG.pod: NOTES section added, with a 
+	discussion on date setting and the notes on MakerNote corruption
+	which were previously written in MakerNotes.pod.
+
+	* lib/Image/MetaData/JPEG/Tables.pm: reorganisation of regular
+	expressions for date fields. The $re_year regular expression was
+	renamed to $re_yr18 and changed to '(18|19|20)\d\d'; this allows
+	'DateTime', 'DateTimeOriginal', 'DateTimeDigitized',
+	'GPSDateStamp', 'DigitalCreationDate', 'ReleaseDate' and
+	'ExpirationDate' to be set to a date from 1800AD on, and not from
+	1900AD as before. The IPTC 'DateCreated' dataset uses now a
+	different regular expression ($re_year = '\d{4}') which allows a
+	date in the full ISO-8601 YYYY-MM-DD format (from 0AD on). Have a
+	look at the note in the main pod document for further details.
+	Special thanks to Ian Cameron Smith for a long discussion on this
+	subject; however, I am still open to suggestions and
+	reconsiderations.
+
+	* lib/Image/MetaData/JPEG.pod: changed the description of
+	Image::ExifTool, which has write capabilities since early 2005.
+
+	* t/JPEG_4_app13_IPTC.t: some new tests for IPTC_1/IPTC_2 (800+!)
+
+	* t/JPEG_4_app13.t: some new tests for IPTC_1/IPTC_2
+
+	* lib/Image/MetaData/JPEG/Structures.pod: (very small) update
+
+	* lib/Image/MetaData/JPEG.pod: documentation updated for IPTC.
+
+2005-10-24  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl (shift_non_repeatables): 
+	new second argument $what, needed for retrieving syntax tables.
+	(value_is_OK): minimal changes to retrieve the correct syntax tables.
+	(set_app13_data): minimale changes to be ready for multiple IPTC
+	subdirectories; more systematic treatment of mandatory datasets.
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl (provide_app13_subdir): 
+        the initialisation of a subdirectory can include mandatory records,
+	which are now read from Tables.pm and not hardcoded here as it used
+	to be. The actual insertion is done via set_app13_data.
+
+	* lib/Image/MetaData/JPEG/JPEG_app13.pl (sanitise_what): $what can
+	be 'IPTC_2' (or 'IPTC' for back. compat.), 'IPTC_1' or 'PHOTOSHOP'. 
+	(subdir_name): the correct subdirectory is returned for both
+	'IPTC_1' and 'IPTC_2' ('IPTC'): $APP13_IPTC_DIRNAME.'_1' or .'_2'
+
+	* lib/Image/MetaData/JPEG/Tables.pm: syntax tables and mandatory
+	records tables for IPTC data are now hidden in the corresponding
+	tag hashes, that is (for instance, for IPTC_1):
+	$$HASH_IPTC_TAGS_1{__syntax}    = $HASH_IPTC_GENERAL_1;
+	$$HASH_IPTC_TAGS_1{__mandatory} = $HASH_IPTC_MANDATORY_1;  
+
+	* lib/Image/MetaData/JPEG/Tables.pm (str2hex): "mandatory" datasets
+	my $HASH_IPTC_MANDATORY_1 = {'ModelVersion'  => "\000\004" };
+	my $HASH_IPTC_MANDATORY_2 = {'RecordVersion' => "\000\002" };
+	I don't know why the standard says 4 for 'RecordVersion'; 
+	it turns out that you always find 2 in JPEG files.
+
+2005-10-23  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Segment_dumpers.pl (dump_IPTC_datasets): 
+	modified to deal with IPTC record numbers other than 2. The record
+	number is now passed as first argument. 
+
+	* lib/Image/MetaData/JPEG/Segment_dumpers.pl (dump_app13): modified
+	to cope with multiple IPTC records (in increasing numerical order).
+
+	* lib/Image/MetaData/JPEG/TagLists.pod: tag descriptions and notes
+	added for datasets in IPTC envelop records; the most important item
+	is the coded character set dataset, selecting the "alphabet".
+
+	* lib/Image/MetaData/JPEG/Tables.pm: changed HASH_IPTC_TAGS and 
+	HASH_IPTC_GENERAL to take into account other IPTC records. This
+	is needed for supporting IPTC records different from two. Dataset
+	curriculum for record = 1 introduced in $HASH_IPTC_GENERAL_1.
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_IPTC_dataset): 
+	this routine now takes one argument ($offset). $dirref is calculated.
+	Each dataset is saved in the corresponding record subdirectory.
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_IPTC_dataset): 
+	new format for storing IPTC data. Given that I have found pictures
+	with records != 2, data-sets are now not all stored directly in the
+	$APP13_IPTC_DIRNAME = "IPTC_RECORD" directory, but in an appropriate
+	"${APP13_IPTC_DIRNAME}_${rnumber}", where $rnumber is the record
+	number (currently, only records 1 and 2 have been observed). Of
+	course, for most pictures only the IPTC_RECORD_2 subdirectory will
+	be populated. Obviously, the "IPTC record != 2 ..." error is now gone.
+	This implies a number of changes in other routines too ...
+
+2005-08-16  Stefano Bettelli  <bettelli@cpan.org>
+
+	* t/test_photo.desc: changed the 'PanoramaMode' and 'Sharpness'
+	lines to SSHORT, to reflect the changes in Tables_makernotes.pl. I
+	guess I should run tests a bit more often ...
+
+	* lib/Image/MetaData/JPEG/Tables.pm: changed the 'XResolution' and
+	'YResolution' default values in $HASH_APP1_IFD01_MANDATORY to [72,
+	1]; tests updated (they were [1, 72], thanks to Ian Cameron Smith
+	for finding this error).
+	
+2005-04-09  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/MakerNotes.pod: new section on the 
+	meaning of tag values for the DX3900 Kodak camera.
+
+	* lib/Image/MetaData/JPEG/Tables_makernotes.pl: 'PanoramaMode' for
+	Kodak cameras is now $SSHORT in '(0|-1)'; 'Sharpness' for Kodak
+	cameras is now $SBYTE in '(-1|0|1)'. Arbitrary but simpler ...
+
 2005-03-21  Stefano Bettelli  <bettelli@cpan.org>
 
 	* lib/Image/MetaData/JPEG.pm: setting $VERSION to 0.141,

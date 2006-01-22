@@ -48,7 +48,7 @@ my $SubIFD_data = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (SUBIFD_DATA)";
-plan tests => 46;
+plan tests => 50;
 #=======================================
 
 #########################
@@ -150,6 +150,29 @@ ok( exists $$hash{&$val('ColorSpace')}, "Invalid short (a string) rejected");
 #########################
 $hash = $image->set_Exif_data({'ExifVersion' => '9999'}, 'SUBIFD_DATA', 'ADD');
 ok( exists $$hash{&$val('ExifVersion')}, "Invalid Exif version rejected" );
+
+#########################
+$dt = '1994:23:23 12:14:61';
+$hash = $image->set_Exif_data({'DateTimeOriginal'=>$dt}, 'SUBIFD_DATA', 'ADD');
+ok( exists $$hash{&$val('DateTimeOriginal')}, "Invalid date/time rejected" );
+
+#########################
+$dt = '1994:06:07 12:14:31';
+$hash = $image->set_Exif_data({'DateTimeDigitized'=>$dt,
+			       'DateTimeOriginal'=>$dt}, 'SUBIFD_DATA', 'ADD');
+is( scalar keys %$hash, 0, "Dates in the 20th century accepted" );
+
+#########################
+$dt = '1823:06:07 12:14:31';
+$hash = $image->set_Exif_data({'DateTimeDigitized'=>$dt,
+			       'DateTimeOriginal'=>$dt}, 'SUBIFD_DATA', 'ADD');
+is( scalar keys %$hash, 0, "Dates in the 19th century accepted" );
+
+#########################
+$dt = '1756:06:07 12:14:31';
+$hash = $image->set_Exif_data({'DateTimeDigitized'=>$dt,
+			       'DateTimeOriginal'=>$dt}, 'SUBIFD_DATA', 'ADD');
+is( scalar keys %$hash, 2, "Dates in the 18th century rejected" );
 
 #########################
 $dt = '1994:23:23 12:14:61';

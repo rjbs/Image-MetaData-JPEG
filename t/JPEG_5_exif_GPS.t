@@ -43,7 +43,7 @@ my $GPS_data = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (GPS_DATA)";
-plan tests => 45;
+plan tests => 47;
 #=======================================
 
 #########################
@@ -227,9 +227,19 @@ $hash = $image->set_Exif_data({'GPSDateStamp' => $str}, 'GPS_DATA', 'ADD');
 ok( ! exists $$hash{29}, "Accepting dates in YYYY:MM:DD" );
 
 #########################
+$str = "1944:11:18";
+$hash = $image->set_Exif_data({'GPSDateStamp' => $str}, 'GPS_DATA', 'ADD');
+ok( ! exists $$hash{29}, "... a good date in the 20th century" );
+
+#########################
 $str = "1802:07:13";
 $hash = $image->set_Exif_data({'GPSDateStamp' => $str}, 'GPS_DATA', 'ADD');
-ok( exists $$hash{29}, "... not accepting a wrong year" );
+ok( ! exists $$hash{29}, "... a good date in the 19th century" );
+
+#########################
+$str = "1799:11:31";
+$hash = $image->set_Exif_data({'GPSDateStamp' => $str}, 'GPS_DATA', 'ADD');
+ok( exists $$hash{29}, "... not accepting a year before 1800" );
 
 #########################
 $str = "2002:47:13";

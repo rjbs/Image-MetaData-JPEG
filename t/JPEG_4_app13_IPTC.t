@@ -5,11 +5,11 @@ use Image::MetaData::JPEG;
 
 my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
-my ($image, $hash, $bighash);
+my ($image, $hash, $bighash, $date);
 
 #=======================================
 diag "Testing APP13 IPTC format checker";
-plan tests => 20;
+plan tests => 33;
 #=======================================
 
 #########################
@@ -19,7 +19,7 @@ is( scalar keys %$hash, 0, "regular tag" );
 
 #########################
 $hash = $image->set_app13_data({ 1 => "ciao" });
-is( scalar keys %$hash, 1, "unkwnon numeric tag" );
+is( scalar keys %$hash, 1, "unknown numeric tag" );
 
 #########################
 $hash = $image->set_app13_data({ -3 => "ciao" });
@@ -90,6 +90,48 @@ $hash = $image->set_app13_data({ 120 => "uno\fdue" }); # Caption/Abstract
 is( scalar keys %$hash, 1, "form feed not allowed in 'paragraph'" );
 
 #########################
+$date = "19920223";
+$hash = $image->set_app13_data({'ReleaseDate' => $date,
+				'ExpirationDate' => $date,
+				'DigitalCreationDate' => $date,
+				'DateCreated' => $date}, 'ADD', 'IPTC');
+is( scalar keys %$hash, 0, "Dates in the 20th century accepted" );
+
+#########################
+$date = "18620223";
+$hash = $image->set_app13_data({'ReleaseDate' => $date,
+				'ExpirationDate' => $date,
+				'DigitalCreationDate' => $date,
+				'DateCreated' => $date}, 'ADD', 'IPTC');
+is( scalar keys %$hash, 0, "Dates in the 19th century accepted" );
+
+#########################
+$date = "17500223";
+$hash = $image->set_app13_data({'ExpirationDate' => $date,
+				'DigitalCreationDate' => $date,
+				'ReleaseDate' => $date}, 'ADD', 'IPTC');
+is( scalar keys %$hash, 3, "Dates in the 18th century not accepted" );
+
+#########################
+$hash = $image->set_app13_data({'DateCreated' => $date}, 'ADD', 'IPTC');
+is( scalar keys %$hash, 0, "... except in DateCreated" );
+
+#########################
+$date = "07500223";
+$hash = $image->set_app13_data({'DateCreated' => $date}, 'ADD', 'IPTC');
+is( scalar keys %$hash, 0, "DateCreated accepts also the 1st millennium" );
+
+#########################
+$date = "00750223";
+$hash = $image->set_app13_data({'DateCreated' => $date}, 'ADD', 'IPTC');
+is( scalar keys %$hash, 0, "... and the 1st century" );
+
+#########################
+$date = "00000101";
+$hash = $image->set_app13_data({'DateCreated' => $date}, 'ADD', 'IPTC');
+is( scalar keys %$hash, 0, "... and the very early days" );
+
+#########################
 $bighash = {
     'RecordVersion'               => "\000\002",
     'ObjectTypeReference'         => "23:ciao a te",
@@ -118,6 +160,36 @@ $bighash = {
     'AudioDuration'               => 121325 };
 $hash = $image->set_app13_data($bighash);
 is( scalar keys %$hash, 0, "a group of valid tags" );
+
+#########################
+$image->provide_app13_segment('IPTC_1');
+$hash = $image->set_app13_data({5 => "Paperopoli"}, 'ADD', 'IPTC_1'); 
+is( scalar keys %$hash, 0, "regular tag (IPTC_1)" ); # Destination
+
+#########################
+$hash = $image->set_app13_data({30 => ["Fax", "Tel"]}, 'ADD', 'IPTC_1');
+is( scalar keys %$hash, 1, "non repeateable tag (IPTC_1)" ); # ServIdent
+
+#########################
+$hash = $image->set_app13_data({60 => 8}, 'ADD', 'IPTC_1');
+is( scalar keys %$hash, 1, "invalid tag (IPTC_1)" ); # Envelope priority
+
+#########################
+$hash = $image->set_app13_data({3 => "some where"}, 'ADD', 'IPTC_1'); # Dest.
+is( scalar keys %$hash, 1, "invalid regex (1, IPTC_1), no spaces allowed" );
+
+#########################
+$hash = $image->set_app13_data({90 => "ABC"}, 'ADD', 'IPTC_1');
+is( scalar keys %$hash, 1, "invalid regex (2, IPTC_1)" ); # Character set
+
+#########################
+$bighash = {'ModelVersion'      => "\000\007",
+	    'Destination'       => [ 'Reggio_Emilia', 'Roma' ],
+	    'ServiceIdentifier' => 'Telephone',
+	    'ProductID'         => [ 'beautiful', 'wonderful' ],
+	    'CodedCharacterSet' => "\033\045G" };
+$hash = $image->set_app13_data($bighash, 'ADD', 'IPTC_1');
+is( scalar keys %$hash, 0, "a group of valid tags (IPTC_1)" );
 
 ### Local Variables: ***
 ### mode:perl ***

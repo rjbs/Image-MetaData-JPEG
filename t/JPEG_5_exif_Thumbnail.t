@@ -45,7 +45,7 @@ ok( $thumb, "JPEG Thumbnail 'saved' in memory" );
 
 #########################
 $result = $image->set_Exif_data($dataref, 'THUMBNAIL');
-is_deeply( $result, {}, "Set new JPEG thumbnail (1): no error" );
+is_deeply( $result, {}, "New JPEG thumbnail set (scalar)" );
 
 #########################
 $dataref2 = \ 'dummy';
@@ -83,8 +83,8 @@ ok( ! exists $$dataref2{$_}, "No $_ tag" ) for
     ('Compression', 'JPEGInterchangeFormat', 'JPEGInterchangeFormatLength');
 
 #########################
-$result = $image->set_Exif_data($dataref, 'THUMBNAIL');
-is_deeply( $result, {}, "Set new JPEG thumbnail (2): no error" );
+$result = $image->set_Exif_data($thumb, 'THUMBNAIL');
+is_deeply( $result, {}, "New JPEG thumbnail set (object)" );
 
 #########################
 $dataref2 = $image->get_Exif_data('THUMBNAIL');
@@ -105,7 +105,7 @@ is_deeply( $$hash{$name}, [length $$dataref], "... and matches thumb. size" );
 
 #########################
 $image->remove_app1_Exif_info();
-$image->set_Exif_data($dataref, 'THUMBNAIL');
+$image->set_Exif_data($thumb, 'THUMBNAIL');
 $dataref2 = $image->get_Exif_data('THUMBNAIL');
 is_deeply( $dataref, $dataref2, "Thumbnail inserted without an APP1 segment" );
 

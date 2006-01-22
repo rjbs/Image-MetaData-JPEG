@@ -18,7 +18,7 @@ my $IFD_data = {
     'Orientation'                  => [4],
     'TransferFunction'             => [(1..768)],
     &$val('XResolution')           => [31000, 65536],
-    &$val('YResolution')           => [1, 72],
+    &$val('YResolution')           => [72, 1],
     &$val('ResolutionUnit')        =>  3,
     'Software'                     => $cname,
     'DateTime'                     => ['1996:07:12 14:36:55'],
@@ -50,7 +50,7 @@ my $calculated = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (IFD01_DATA)";
-plan tests => 57;
+plan tests => 59;
 #=======================================
 
 #########################
@@ -129,10 +129,10 @@ is( scalar keys %$hash, scalar keys %$calculated,
 #########################
 $seg->set_Exif_data({}, 'IFD0_DATA', 'REPLACE');
 $hash = $seg->get_Exif_data('IFD0_DATA', 'TEXTUAL');
-is_deeply( $$hash{'XResolution'}, [1,72], "Automatic IFD0 XResolution works" );
+is_deeply( $$hash{'XResolution'}, [72,1], "Automatic IFD0 XResolution works" );
 
 #########################
-is_deeply( $$hash{'YResolution'}, [1,72], "... also YResolution" );
+is_deeply( $$hash{'YResolution'}, [72,1], "... also YResolution" );
 
 #########################
 is_deeply( $$hash{'ResolutionUnit'}, [2], "... also ResolutionUnit" );
@@ -143,10 +143,10 @@ is_deeply( $$hash{'YCbCrPositioning'}, [1], "... also YCbCrPositioning" );
 #########################
 $seg->set_Exif_data({}, 'IFD1_DATA', 'REPLACE');
 $hash = $seg->get_Exif_data('IFD1_DATA', 'TEXTUAL');
-is_deeply( $$hash{'XResolution'}, [1,72], "Automatic IFD1 XResolution works" );
+is_deeply( $$hash{'XResolution'}, [72,1], "Automatic IFD1 XResolution works" );
 
 #########################
-is_deeply( $$hash{'YResolution'}, [1,72], "... also YResolution" );
+is_deeply( $$hash{'YResolution'}, [72,1], "... also YResolution" );
 
 #########################
 is_deeply( $$hash{'ResolutionUnit'}, [2], "... also ResolutionUnit" );
@@ -228,6 +228,16 @@ is_deeply( $$hash{'DateTime'}, [$dt."\000"], "... and its value is correct" );
 $dt = '1994:23:23 12:14:61';
 $hash = $image->set_Exif_data({'DateTime' => $dt}, 'IFD1_DATA', 'ADD');
 ok( exists $$hash{&$val('DateTime')}, "Invalid date/time rejected" );
+
+#########################
+$dt = '1821:10:07 04:12:50';
+$hash = $image->set_Exif_data({'DateTime' => $dt}, 'IFD1_DATA', 'ADD');
+ok( ! exists $$hash{&$val('DateTime')}, "Date in the 19th century accepted" );
+
+#########################
+$dt = '1799:10:07 04:12:50';
+$hash = $image->set_Exif_data({'DateTime' => $dt}, 'IFD1_DATA', 'ADD');
+ok( exists $$hash{&$val('DateTime')}, "Date in the 18th century not accepted");
 
 #########################
 $dt = '    :  :     :  :  ';

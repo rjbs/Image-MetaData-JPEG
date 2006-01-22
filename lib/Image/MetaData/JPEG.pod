@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 
@@ -19,27 +19,31 @@ Image::MetaData::JPEG - Perl extension for showing/modifying JPEG (meta)data.
     use Image::MetaData::JPEG;
 
     # Create a new JPEG file structure object
-    my $file = new Image::MetaData::JPEG($filename);
-    die 'Error: ' . Image::MetaData::JPEG::Error() unless $file;
+    my $image = new Image::MetaData::JPEG('somepicture.jpg');
+    die 'Error: ' . Image::MetaData::JPEG::Error() unless $image;
 
-    # Get a list of references to JPEG segments
-    my @segments = $file->get_segments($regex, $do_indexes);
+    # Get a list of references to comment segments
+    my @segments = $image->get_segments('COM', 'INDEXES');
 
     # Get the JPEG picture dimensions
-    my ($dim_x, $dim_y) = $file->get_dimensions();
+    my ($dim_x, $dim_y) = $image->get_dimensions();
 
     # Show all JPEG segments and their content
-    print $file->get_description();
+    print $image->get_description();
+
+    # Retrieve a specific value from Exif meta-data
+    my $image_data = $image->get_Exif_data('IMAGE_DATA', 'TEXTUAL');
+    print $image_data->{DateTimeOriginal}->[0], "\n";
 
     # Modify the DateTime tag for the main image
-    $file->set_Exif_data({'DateTime' => '1994:07:23 12:14:51'},
-                         'IMAGE_DATA', 'ADD');
+    $image->set_Exif_data({'DateTime' => '1994:07:23 12:14:51'},
+                           'IMAGE_DATA', 'ADD');
 
     # Delete all meta-data segments (please, don't)
-    $file->drop_segments('METADATA');
+    $image->drop_segments('METADATA');
 
     # Rewrite file to disk after your modifications
-    $file->save('new_file_name.jpg');
+    $image->save('new_file_name.jpg');
 
     # ... and a lot more methods for viewing/modifying meta-data, which
     # are accessed through the $file or $segments[$index] references.
@@ -340,6 +344,14 @@ happens when trying to update a segment without update support or without
 records (this catches segments created with the 'NOPARSE' flag). In
 practise, never use this method unless you are writing an extension for
 this module.
+
+Note that this method preliminarly saves a reference to the old segment
+data area and restores it if the update process fails (if this happens, a
+warning is generated). One wonders wheather there are there cleverer ways
+to handle this case (any suggestion is welcome). It is however better to
+have a corrupt object in memory, than a corrupt object written over the
+original. Currently, this is restricted to the possibility that an updated
+segment becomes too large.
 
     $segment->update();
 
@@ -848,18 +860,18 @@ snippet of code for visualising Exif data looks like this:
 =item JPEG::set_Exif_data
 
 [arguments: C<($data, $what, $action)>]
-The APP1 Exif structure is quite complicated, and the number of different
-possible cases when trying to modify it is very large; therefore, designing
-a clean and intuitive interface for this task is not trivial. The following
-method calls are a proposal open to discussion with the end user (if he/she
-can find a cleaner interface with an acceptable cost for the developer...).
+
 Similarly to the L<getter|/JPEG::Segment::get_Exif_data> case, there is a
 I<set_Exif_data> method callable from a picture object, which does nothing
 more than looking for the first Exif APP1 segment (creating it, if there is
 none) and invoke the method with the same name in the Segment class,
 passing its arguments through. So, the remaining of this section will
-concentrate on the Segment method. Let us discuss the guidelines for the
-Exif setter method(s).
+concentrate on the Segment method. The problem of setting a new thumbnail
+or erasing it is dealt with in the last paragraphs of this section. (The
+APP1 Exif structure is quite complicated, and the number of different
+possible cases when trying to modify it is very large; therefore, designing
+a clean and intuitive interface for this task is not trivial. Fell free to
+suggest improvements and cleaner interfaces).
 
 Exif records are usually characterised by a numeric key (a I<tag>); this
 was already discussed in the "getter" section. Since these keys, for valid
@@ -894,7 +906,7 @@ $what are (MakerNote data are not currently modifiable):
     --------------------------------------------------------------------
     IMAGE_DATA    as IFD0_DATA and SUBIFD_DATA          ref. to flat hash
     THUMB_DATA    this is an alias for IFD1_DATA        ref. to flat hash
-    THUMBNAIL     the actual (un)compressed thumbnail   ref. to scalar
+    THUMBNAIL     the actual (un)compressed thumbnail   ref. to scalar/object
     ROOT_DATA     header records (endianness)           ref. to flat hash
     IFD0_DATA     primary image TIFF tags               ref. to flat hash
     SUBIFD_DATA   Exif private tags                     ref. to flat hash
@@ -1031,16 +1043,24 @@ translated as 'Unknown_tag_...'. MakerNotes cannot be currently modified.
 
 =item THUMBNAIL
 
-$data must be a reference to a scalar containing the new thumbnail; if it
-points to an empty string, the thumbnail is erased (the undefined value
-DOES NOT erase the thumbnail, it generates instead an error). All thumbnail
-specific records (see the L<canonical
-tags|Image::MetaData::JPEG::TagLists/Canonical Exif 2.2 and TIFF 6.0 tags
-for IFD0 and IFD1> section) are removed, and only those corresponding to
-the newly inserted thumbnail are calculated and written back. Currently, it
-is not possible to insert an uncompressed thumbnail (this will probably
-happen in the form of a TIFF image), only JPEG ones are accepted (automatic
-records contain the type, length and offset).
+$data must be a reference to a scalar containing the new thumbnail or to a
+valid Image::MetaData::JPEG object; if it points to an empty string, the
+thumbnail is erased (the undefined value DOES NOT erase the thumbnail, it
+generates instead an error). All thumbnail specific records (see the
+L<canonical tags|Image::MetaData::JPEG::TagLists/Canonical Exif 2.2 and
+TIFF 6.0 tags for IFD0 and IFD1> section) are removed, and only those
+corresponding to the newly inserted thumbnail are calculated and written
+back. Currently, it is not possible to insert an uncompressed thumbnail
+(this will probably happen in the form of a TIFF image), only JPEG ones are
+accepted (automatic records contain the type, length and offset). The
+following code shows how to set and delete a thumbnail.
+
+    my $image = new Image::MetaData::JPEG('original_image.jpg');
+    my $thumb = new Image::MetaData::JPEG('some_thumbnail.jpg');
+    $image->set_Exif_data($thumb, 'THUMBNAIL');
+    $image->save('modified_image.jpg');
+    $image->set_Exif_data(\ '', 'THUMBNAIL');
+    $image->save('thumbless_image.jpg');
 
 =back 
 
@@ -1050,39 +1070,56 @@ records contain the type, length and offset).
 
 The Adobe's Photoshop program, a de-facto standard for image manipulation,
 has, since long, used the APP13 segment for storing non-graphical
-information, such as layers, paths, ecc...; this includes editorial
-information modelled on I<IPTC/NAA> recommendations (have a look at the
-appendices about valid
+information, such as layers, paths, ecc..., including editorial information
+modelled on I<IPTC/NAA> recommendations. This module provides a number of
+methods for managing Photoshop/IPTC data without dealing with the details
+of the low level representation (although sometimes this means taking some
+decisions for the end user ....). The structure of the IPTC data block(s)
+is managed in detail and separately from the rest, although this block is a
+sort of "sub-case" of Photoshop information. The interface is intentionally
+similar to L<that|/Exif data ("APP1" segments)> for Exif data.
+
+All public methods have a I<$what> argument selecting which part of the
+APP13 segment you are working with. The default is 'IPTC'. If $what is
+invalid, an exception is always raised. The kind of information you can
+access with different values of $what is explained in the following (have a
+look at the appendices about valid
 L<Photoshop-style|Image::MetaData::JPEG::TagLists/Valid tags for
 Photoshop-style APP13 data> and
 L<IPTC|Image::MetaData::JPEG::TagLists/Valid tags for IPTC data> tags for
-further details). This module provides a number of methods for managing
-Photoshop/IPTC data without dealing with the details of the low level
-representation (although sometimes this means taking some decisions for the
-end user ....). The interface is intentionally similar to L<that|/Exif data
-("APP1" segments)> for Exif data.
+further details):
 
-The structure of the IPTC data block is managed in detail and separately
-from the rest, although this block is a sort of "sub-case" of Photoshop
-information; all public methods have a I<$what> argument, which can be only
-'PHOTOSHOP' or 'IPTC' [default], selecting which part of the APP13 segment
-you are working with. If $what is invalid, an exception is always raised.
+    $what:        Concerned pieces of information:
+    -----------   --------------------------------
+    'IPTC' or     Editorial information like caption, abstract, author,
+    'IPTC_2'      copyright notice, byline, shot site, user defined keywords,
+                  and many more; in practise, all what is covered by the IPTC
+                  Application Record 2. This is the most common option; the
+                  default value of $what, 'IPTC', is a synonym for 'IPTC_2'
+                  for backward compatibility (NOT a merge of 'IPTC_1/2').
+    'IPTC_1'      This refers to more obscure pieces of information, contained
+                  in the IPTC Envelope Record 1. One is rarely interested by
+                  this, exception made for the "Coded Character Set" tag,
+                  which is necessary to define a character set different
+                  from ASCII (i.e., when you don't write or read in English).
+    'PHOTOSHOP'   Alpha channels, colour information, transfer functions,
+                  and many other details concerning the visual rendering of
+                  the picture. This fields are most often only modified by
+                  an image manipulation program, and not directly by the user.
 
 =over
 
 =item JPEG::retrieve_app13_segment
 
-[arguments: C<($index, $what)>]
+[arguments: C<($index, $what)>] 
 In order to work on Photoshop/IPTC data, a suitable Photoshop-style APP13
 Segment must first be selected. The I<retrieve_app13_segment> method
 returns a reference to the I<$index>-th Segment (the first Segment if the
 $index is undefined) which contains information matching the $what
-argument; so, specifically, if $what is 'IPTC', there must be a non-void
-IPTC data block, while if $what is 'PHOTOSHOP' at least a non-IPTC data
-block must be present. If such Segment does not exist, the method returns
-the undefined reference. If $index is (-1), the routine returns the number
-of available suitable APP13 Segments (which is non negative). Beware, the
-meaning of $index is influenced by the value of $what.
+argument. If such Segment does not exist, the method returns the undefined
+reference. If $index is (-1), the routine returns the number of available
+suitable APP13 Segments (which is non negative). Beware, the meaning of
+$index is influenced by the value of $what.
 
     my $num_IPTC = $file->retrieve_app13_segment(-1, 'IPTC');
     my $ref_IPTC = $file->retrieve_app13_segment($num - 1, 'IPTC');
@@ -1104,18 +1141,17 @@ identifier is used). Note that there is no $index argument here.
 
 =item JPEG::remove_app13_info
 
-[arguments: C<($index, $what)>]
-If you want to remove all traces of non-IPTC information from the $index-th
-APP13 Photoshop-style Segment, use the I<remove_app13_info> method with
-$what set to 'PHOTOSHOP'. Conversely, if you want to remove IPTC
-information from the $index-th APP13 IPTC-enabled Segment, set $what to
-'IPTC'. If, after this, the segment is empty, it is eliminated from the
-list of segments in the file. If $index is (-1), all APP13 Segments are
-affected at once. Beware, the meaning of $index is influenced by the value
-of $what.
+[arguments: C<($index, $what)>] 
+If you want to remove all traces of some flavour of APP13 information from
+the $index-th APP13 Photoshop-style Segment, use the I<remove_app13_info>
+method with $what set to the appropriate value. If, after this, the segment
+is empty, it is eliminated from the list of segments in the file. If $index
+is (-1), all APP13 Segments are affected at once. Beware, the meaning of
+$index is influenced by the value of $what.
 
     $file->remove_app13_info(3, 'PHOTOSHOP');
     $file->remove_app13_info(-1, 'IPTC');
+    $file->remove_app13_info(0, 'IPTC_1');
 
 =back
 
@@ -1125,34 +1161,39 @@ of $what.
 
 =item JPEG::Segment::get_app13_data
 
-[arguments: C<($type, $what)>]
+[arguments: C<($type, $what)>] 
+
 Once you have a Segment reference pointing to your favourite IPTC-enabled
 APP13 Segment, you may want to have a look at the records it contains. Use
 the I<get_app13_data> method for this: its behaviour is controlled by the
-I<$type> and I<$what> argument (here, $what is 'IPTC' of course). It
-returns a reference to a hash containing a copy of the list of IPTC
-records, if present, undef otherwise: each element of the hash is a pair
-(key, arrayref), where arrayref points to an array with the real values
-(L<some IPTC records|Image::MetaData::JPEG::TagLists/Valid tags for IPTC
-data> are repeatable so multiple values are possible). The record keys can
-be the native numeric keys ($type eq 'NUMERIC') or translated textual keys
-($type eq 'TEXTUAL', default); in any case, the record values are
-untranslated. If a numeric key stored in the JPEG file is unknown, and a
-textual translation is requested, the name of the key becomes
-"Unknown_tag_$tag". Note that there is no check on the validity of IPTC
-records' values: their format is not checked and one or multiple values can
-be attached to a single tag independently of its repeatability. This is, in
-some sense, consistent with the fact that also "unknown" tags are included
-in the output. If $type or $what is invalid, an exception is thrown out.
+I<$type> and I<$what> argument (here, $what is 'IPTC_1' or 'IPTC_2' alias
+'IPTC', of course). It returns a reference to a hash containing a copy of
+the list of the appropriate IPTC records, if present, undef otherwise: each
+element of the hash is a pair (key, arrayref), where arrayref points to an
+array with the real values (L<some IPTC
+records|Image::MetaData::JPEG::TagLists/Valid tags for IPTC data> are
+repeatable so multiple values are possible). The record keys can be the
+native numeric keys ($type eq 'NUMERIC') or translated textual keys ($type
+eq 'TEXTUAL', default); in any case, the record values are untranslated. If
+a numeric key stored in the JPEG file is unknown, and a textual translation
+is requested, the name of the key becomes "Unknown_tag_$tag". Note that
+there is no check on the validity of IPTC records' values: their format is
+not checked and one or multiple values can be attached to a single tag
+independently of its repeatability. This is, in some sense, consistent with
+the fact that also "unknown" tags are included in the output. If $type or
+$what is invalid, an exception is thrown out. An example of how to extract
+and display IPTC data is given here:
 
     my $hash_ref = $segment->get_app13_data('TEXTUAL', 'IPTC');
+    while (my ($key, $vals) = each %$hash_ref) {
+       printf "# %20s =", $key; print " '$_'" for @$vals; print "\n"; }
 
-An example of a possible output from this call is the following:
-
-    $hash_ref = { 'DateCreated'        => [ '19890207' ],
-                  'ByLine'             => [ 'Interesting picture', 'really' ],
-                  'Category'           => [ 'POL' ],
-                  'OriginatingProgram' => [ 'Mapivi' ] };
+    ### This could print:
+    # DateCreated         = '19890207'
+    # ByLine              = 'Interesting picture' 'really'
+    # Category            = 'POL'
+    # Keywords            = 'key-1' 'key-2' 'key-99'
+    # OriginatingProgram  = 'Mapivi'
 
 =item JPEG::Segment::set_app13_data
 
@@ -1177,30 +1218,34 @@ $action argument can be:
    - REPLACE : all records present in the IPTC subdirectory are deleted
            before inserting the new ones (this is the default action).
 
-If, after implementing the changes required by $action, the 'RecordVersion'
-record (dataset 0) is still undefined, it is added (with version = 2),
-because it is mandatory according to the IPTC standard. The return value is
-a reference to a hash containing the rejected key-values entries. The
-entries of %$data are not modified. An entry in the %$data hash can be
-rejected for various reasons (you might want to have a look at appendix
-about valid L<IPTC tags|Image::MetaData::JPEG::TagLists/Valid tags for IPTC
-data> for further information): a) the tag is undefined or not known; b)
-the entry value is undefined or points to an empty array; c) the
-non-repeatability constraint is violated; d) the tag is marked as invalid;
-e) a value is undefined f) the length of a value is invalid; g) a value
-does not match its mandatory regular expression.
+If, after implementing the changes required by $action, any mandatory
+dataset (according to the IPTC standard), is still undefined, it is added
+automatically. This often concerns version datasets, with numeric index 0.
+
+The return value is a reference to a hash containing the rejected
+key-values entries. The entries of %$data are not modified. An entry in the
+%$data hash can be rejected for various reasons (you might want to have a
+look at appendix about valid L<IPTC
+tags|Image::MetaData::JPEG::TagLists/Valid tags for IPTC data> for further
+information): a) the tag is undefined or not known; b) the entry value is
+undefined or points to an empty array; c) the non-repeatability constraint
+is violated; d) the tag is marked as invalid; e) a value is undefined f)
+the length of a value is invalid; g) a value does not match its mandatory
+regular expression.
 
     $segment->set_app13_data($additional_data, 'ADD', 'IPTC');
 
 A snippet of code for changing IPTC data looks like this:
 
     my $segment = $file->provide_app13_segment('IPTC');
-    my $hashref = {
-	ObjectName => 'prova',
-    	ByLine     => 'ciao',
-    	Keywords   => [ 'donald', 'duck' ],
-    	SupplementalCategory => ['arte', 'scienza', 'diporto'] };
-    $segment->set_app13_data($hashref, 'REPLACE', 'IPTC');
+    my $hashref_1 = { CodedCharacterSet => "\033\045G" }; # UTF-8
+    my $hashref_2 = { ObjectName => 'prova',
+     	              ByLine     => 'ciao',
+    	              Keywords   => [ 'donald', 'duck' ],
+    	              SupplementalCategory => ['arte', 'scienza', 'diporto'] };
+    $segment->set_app13_data($hashref_2, 'REPLACE', 'IPTC');
+    $segment->provide_app13_subdir('IPTC_1');
+    $segment->set_app13_data($hashref_1, 'ADD', 'IPTC_1');
 
 =item JPEG::get_app13_data
 
@@ -1283,6 +1328,72 @@ to be rejected.
 	IDsBaseValue   => [ pack('N', 1), 'Layer ID Generator Base' ] };
     $segment->set_app13_data($hashref, 'ADD', 'PHOTOSHOP');
 
+=head1 NOTES
+
+=head2 On the subject of year specification in a date
+
+There are currently eight fields whose purpose is to store a I<date> in a
+JPEG picture, namely 'DateTime', 'DateTimeOriginal' and 'DateTimeDigitized'
+(in IFD0/1 or SubIFD), 'GPSDateStamp' (in the GPS section), and
+'ReleaseDate', 'ExpirationDate', 'DateCreated' and 'DigitalCreationDate'
+(in the IPTC section). Most of these dates refer to some electronic
+treatment of images, a kind of process which was not available before the
+late twentieth century. Two of them refer to release and expiration dates
+in the IPTC standard, and should therefore not be set to a date before the
+introduction of the standard itself. However, there exist users who want to
+use some of these fields in a non-conventional way to refer to dates when
+analog photography but not digital photography was available. For this
+reason, all tags (but one) can be written with a year starting from 1800
+(and not from 1900 as in earlier releases). Users are however advised to
+check the "specifications" for these tags before setting the date and take
+responsibility for their non-conventionality.
+
+There is one notable exception to the previous considerations, that is the
+IPTC 'DateCreated' dataset, which should explicitly refer to the creation
+date of the object represented in the picture, which can be many centuries
+in the past. For this dataset a special regular expression is provided
+which allows a date in the full ISO-8601 YYYY-MM-DD format (however, it
+should be noted that even ISO-8601 does not allow a date before 0AD, so not
+all masterworks from ancient Greece can be tagged in this way ... let me
+know if I am wrong). I am, of course, still open to suggestions and
+reconsiderations on this subject.
+
+=head2 On the problem of MakerNote corruption and ways to overcome it
+
+A widespread problem with Exif I<maker notes> is that there is no common
+standard for how to parse and rewrite the information in the I<MakerNote>
+data area. This is the reason why most programs dealing with Exif JPEG
+files corrupt the MakerNote on saving, or decide to drop it altogether (be
+aware that there existed programs known to hang when they try to read a
+corrupt maker note).
+
+In fact, many maker notes contain a non-standard I<IFD> structure, with
+some tags storing file offsets (see the documentation page describing the
+L<IFD structure|Image::MetaData::JPEG::Structures/Structure of an Exif APP1
+segment>). Therefore, saving a maker note without regard for internal
+offsets' adjustment reduces the note mostly to garbage. Re-dumping a maker
+note after changing the Exif APP1 segment endianness incurs the same
+problem, because no internal byte-swap is performed.
+
+A few countermeasures have been introduced in this package to try to cure
+some maker note problems. The first one concerns the correct byte order
+(the endianness, which is not always the same used in the Exif segment),
+which needs not to be known in advance; it is in fact determined by using
+the fact that, if the note is IFD-like (even non-standard), the number of
+tags is always in the range [1,255], so the two-bytes tag count has always
+the most significant byte set to zero, and the least significant byte set
+to non-zero.
+
+There is also a prediction and correction mechanism for the offsets in the
+interoperability arrays, based on the simple assumption that the absolute
+value of offsets can be wrong, but their differences are always right, so,
+if one can get the first one right ... a good bet is the address of the
+byte immediately following the next_IFD link (or the tag list, if this link
+is absent). If the parsing process does not end successfully, this
+mechanism is enabled and its "corrected" findings are stored instead of the
+original ones if it is able to cure the problems (i.e., if the second try
+at parsing the note is successful).
+
 =head1 CURRENT STATUS
 
 A lot of other routines for modifying other meta-data could be added in the
@@ -1298,7 +1409,7 @@ Segments (only APP and COM Segments).
     * APP2   FPXR data or ICC profiles  parse
     * APP3   additional Exif-like data  parse
     * APP4   HPSC                       nothing
-    * APP12  PreExif ASCII meta         parse[devel.]
+    * APP12  PreExif ASCII meta         parse
     * APP13  IPTC and PhotoShop data    parse/read/write
     * APP14  Adobe tags                 parse
 
@@ -1320,24 +1431,28 @@ parse_app12(), probably there is some standard I don't know.
 
 Other packages are available in the free software arena, with a feature set
 showing a large overlap with that found in this package; a probably
-incomplete list follows. However, none of them is completely satisfactory
-with respect to the package's objectives, which are: being a single package
-dealing with all types of meta-information in read/write mode in a JPEG
-(and possibly TIFF) file; depending on the least possible number of non
-standard packages and/or external programs or libraries; being open-source
-and written in Perl. Of course, most of these objectives are far from being
-reached ....
+incomplete list follows. However, none of them is (or was) completely
+satisfactory with respect to the package's objectives, which are: being a
+single package dealing with all types of meta-information in read/write
+mode in a JPEG (and possibly TIFF) file; depending on the least possible
+number of non standard packages and/or external programs or libraries;
+being open-source and written in Perl. Of course, most of these objectives
+are far from being reached ....
 
 =over 4
 
 =item "L<Image::ExifTool>" by Phil Harvey
 
-I<ExifTool> is a Perl script that extracts meta information from various
-image file types; it can read Exif, IPTC, XPM and GeoTIFF formatted data as
-well as the maker notes of many digital cameras. This script is just a
-command-line interface to the I<Image::ExifTool> module, a very complete
-library, highly customisable and capable of organising the results in
-various ways, but not designed to modify file data (it only reads).
+I<ExifTool> is a Perl module with an included command-line application for
+reading and writing meta information in image files. It recognizes EXIF,
+GPS, IPTC, XMP, JFIF, GeoTIFF, ICC Profile, Photoshop IRB and ID3 meta
+information as well as the maker notes of many digital cameras including
+Canon, Casio, FujiFilm, Kodak, Leaf, Minolta/Konica-Minolta, Nikon,
+Olympus/Epson, Panasonic/Leica, Pentax/Asahi, Ricoh, Sanyo and
+Sigma/Foveon. It was started as a highly customisable, read-only report
+tool, capable of organising the results in various ways. Since version 4.10
+(beginning of 2005) it added the ability to modify and rewrite JPEG
+tags. So sad there are now two projects with such a large overlap.
 
 =item "L<Image::IPTCInfo>" by Josh Carter
 
@@ -1435,7 +1550,7 @@ Stefano Bettelli, B<bettelli@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2004,2005 by Stefano Bettelli
+Copyright (C) 2004,2005,2006 by Stefano Bettelli
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU L<General Public License|perlgpl>. See the

@@ -8,7 +8,7 @@ my $tfrank = 't/test_frankenstein.jpg';
 my $trim = sub { join '\n', map { s/^.*\"(.*)\".*$/$1/; $_ }
 		 grep { /0:/ } split '\n', $_[0] };
 my ($image, @segs, $seg, $hash, $num, $rec, $problem, $data);
-# this is for trapping an error:
+
 sub trap_error { local $SIG{'__'.$_[0].'__'} = sub { $problem = shift; };
 		 $problem = undef; eval $_[1]; }
 
@@ -93,14 +93,14 @@ isnt( $seg->{error}, undef, "An APP0 segment with an invalid identifier" );
 #########################
 $seg = $::sname->new('APP1', undef, 'NOPARSE');
 $seg->store_record('Namespace', 1, \ "\000");
-eval { $seg->update() };
-isnt( $@, '', "XPM APP1 segments not updatable yet" );
+trap_error('WARN', '$seg->update()');
+like( $problem, qr/[Rr]everting/, "XPM APP1 segments not updatable yet" );
 
 #########################
 $seg = $::sname->new('APP1', undef, 'NOPARSE');
 $seg->store_record('Unknown', 1, \ "\000");
-eval { $seg->update() };
-isnt( $@, '', "Dump of APP1 segment with unknown format catched" );
+trap_error('WARN', '$seg->update()');
+like( $problem, qr/[Rr]everting/, "APP1 seg. with unknown format catched" );
 
 #########################
 $seg = $::sname->new('APP1', undef, 'NOPARSE');

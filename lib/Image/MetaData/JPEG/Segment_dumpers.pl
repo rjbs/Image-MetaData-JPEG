@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
@@ -29,7 +29,9 @@ use warnings;
 sub dump_com {
     my ($this) = @_;
     # write the only record into the data area
-    $this->set_data($this->search_record_value('Comment'), "OVERWRITE");
+    $this->set_data($this->search_record_value('Comment'));
+    # return without errors
+    return undef;
 }
 
 ###########################################################
@@ -39,16 +41,20 @@ sub dump_com {
 ###########################################################
 sub dump_app1 {
     my ($this) = @_;
+    # Look for the 'Identifier' record (which should always exist and
+    # contain the EXIF tag), and for a 'Namespace' record (Adobe XMP)
+    my $identif   = $this->search_record_value('Identifier');
+    my $namespace = $this->search_record_value('Namespace');
     # If the 'Identifier' record exists and contains
     # the EXIF tag, this is a standard Exif segment
-    my $identif = $this->search_record_value('Identifier');
-    return $this->dump_app1_exif() if $identif && $identif eq $APP1_EXIF_TAG;
+    if ($identif && $identif eq $APP1_EXIF_TAG) { $this->dump_app1_exif(); }
     # Otherwise, look for a 'Namespace' record; chances
     # are this is an Adobe XMP segment
-    my $namespace = $this->search_record_value('Namespace');
-    $this->die('Dumping XMP APP1') if defined $namespace;
+    elsif ($namespace) { return 'Dumping XMP APP1 not implemented'; }
     # Otherwise, we have a problem
-    $this->die('Segment dump not possible');
+    else { return 'Segment dump not possible'; }
+    # return without errors
+    return undef;
 }
 
 ###########################################################
@@ -59,7 +65,7 @@ sub dump_app1_exif {
     my ($this) = @_;
     # dump the identifier (not part of the TIFF header)
     my $identifier = $this->search_record('Identifier')->get();
-    $this->set_data($identifier, 'OVERWRITE');
+    $this->set_data($identifier);
     # dump the TIFF header; note that the offset returned by
     # dump_TIFF_header is the current position in the newly written
     # data area AFTER the identifier (i.e., the base is the base
@@ -319,26 +325,32 @@ sub dump_app13 {
     # the segment always starts with an Adobe identifier
     $this->die('Identifier not found') unless
 	my $id = $this->search_record_value('Identifier');
-    $this->set_data($id, "OVERWRITE");
+    $this->set_data($id);
     # version 2.5 (old) is followed by eight undocumented bytes
     # (maybe resolution info): output them if present and valid
     my $rec = $this->search_record('Resolution');
     $this->die('Header problem') unless (defined $rec) eq ($id =~ /2\.5/);
     $this->set_data($rec->get_value()) if $rec;
-    # check if subdirectories are present or not
-    my $iptc_records = $this->search_record_value($APP13_IPTC_DIRNAME);
-    my $shop_records = $this->search_record_value($APP13_PHOTOSHOP_DIRNAME);
+    # check if subdirectories are present or not (remember that there
+    # can be multiple IPTC subdirs, referring to different IPTC records)
+    my %iptc_records = map 
+    { $_ => $this->search_record("${APP13_IPTC_DIRNAME}_${_}") } (1..9);
+    my $shop_records = $this->search_record($APP13_PHOTOSHOP_DIRNAME);
     # dump the IPTC block, if present; the easiest solution is
     # to create a fake Record, which is then dumped as usual
-    if ($iptc_records) {
-	my $block = dump_IPTC_datasets($iptc_records);
-	my $record = new Image::MetaData::JPEG::Record
-	    ($APP13_PHOTOSHOP_IPTC, $UNDEF, \ $block, length $block);
-	$record->{extra} = $this->search_record($APP13_IPTC_DIRNAME)->{extra};
-	$this->dump_resource_data_block($record); }
+    for my $r_number (sort { $a <=> $b } keys %iptc_records) {
+	if ($iptc_records{$r_number}) {
+	    my $content = $iptc_records{$r_number}->get_value();
+	    my $block = dump_IPTC_datasets($r_number, $content);
+	    my $record = new Image::MetaData::JPEG::Record
+		($APP13_PHOTOSHOP_IPTC, $UNDEF, \ $block, length $block);
+	    $record->{extra} = $iptc_records{$r_number}->{extra};
+	    $this->dump_resource_data_block($record); } }
     # dump the other Photoshop blocks, if any
     if ($shop_records) {
-	$this->dump_resource_data_block($_) for @$shop_records; }
+	$this->dump_resource_data_block($_) for @{$shop_records->get_value()};}
+    # return without errors
+    return undef;
 }
 
 ###########################################################
@@ -370,22 +382,22 @@ sub dump_resource_data_block {
 }
 
 ###########################################################
-# This auxilliary routine dumps all IPTC records in the   #
-# @$records subdirectory into datasets, and concatenates  #
-# them into a string, which is returned at the end. See   #
-# parse_IPTC_dataset for details.                         #
+# This auxiliary routine dumps all IPTC datasets in the   #
+# @$record subdirectory, referring to the $r_number IPTC  #
+# record, and concatenates them into a string, which is   #
+# returned at the end. See parse_IPTC_dataset for details.#
 ###########################################################
 sub dump_IPTC_datasets {
-    my ($records) = @_;
+    my ($r_number, $record) = @_;
     # prepare the scalar to be returned at the end
     my $block = "";
-    # Each record is a sequence of variable length data sets. Each
+    # Each IPTC record is a sequence of variable length data sets. Each
     # dataset begins with a "tag marker" (its value is fixed) followed
-    # by a "record number" (fixed to 2; here "record" means "IPTC record",
-    # not our objects), followed by the dataset number, length and data.
-    for (@$records) {
+    # by the "record number" (given by $r_number), followed by the
+    # dataset number, length and data.
+    for (@$record) {
 	my ($dnumber, $type, $count, $dataref) = $_->get();
-	$block .= pack "CCCn", ($APP13_IPTC_TAGMARKER, 2,
+	$block .= pack "CCCn", ($APP13_IPTC_TAGMARKER, $r_number,
 				$dnumber, length $$dataref);
 	$block .= $$dataref;
     }

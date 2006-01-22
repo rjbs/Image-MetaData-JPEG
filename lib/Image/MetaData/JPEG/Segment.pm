@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
@@ -174,20 +174,53 @@ sub reparse_as {
 # nated. The routine dispatches to more specific methods. #
 # ------------------------------------------------------- #
 # A segment with errors cannot be updated (a security     #
-# measure: do not update what you do not understand)      #
+# measure: do not update what you do not understand).     #
+# Entropy-coded segments or past-the-end garbage do not   #
+# need being updated: the method returns immediately.     #
+# ------------------------------------------------------- #
+# update() saves a reference to the old segment data area #
+# and restores it if the specialised update routine fails.#
+# This only generate a warning! Are there cleverer ways   #
+# to handle this case? It is however better to have a     #
+# corrupt object in memory, than a corrupt object written #
+# over the original. Currently, this is restricted to the #
+# possibility that an updated segment becomes too large.  #
 ###########################################################
 sub update {
     my ($this) = @_;
+    # get the name of the segment
+    my $name = $this->{name};
+    # return immediately if this is an entropy-coded segment or 
+    # past-the-end garbage. There is no need to "update" them
+    return if $name =~ /ECS|Post-EOI/;
     # if the segment was not correctly parsed, warn and return
     $this->die('This segment is faulty') if $this->{error};
     # this might come also from 'NOPARSE'
     $this->die('This segment has no records') unless @{$this->{records}};
-    # call a more specific routine
-    return $this->dump_com()   if $this->{name} eq 'COM';
-    return $this->dump_app1()  if $this->{name} eq 'APP1';
-    return $this->dump_app13() if $this->{name} eq 'APP13';
-    # the other types are still unhandled (SOI, EOI and RST* are trivial)
-    $this->die("'$this->{name}' update routine not yet implemented");
+    # save a copy of the old data area.
+    my $old_content = $this->{dataref};
+    # blank the data area (do not assign directly to a reference to the
+    # null string, since it is not modifiable in some implementations!)
+    $this->{dataref} = \ (my $ns = '');
+    # an error variable for specific update routines
+    my $error = undef;
+    # call more specific routines for segments we know how
+    # to update. Generate an error if the type is not managed.
+    # (SOI, EOI and RST* are trivial and should not get here)
+    for ($name) {
+	$error = $this->dump_com(),   next if $_ eq 'COM';
+	$error = $this->dump_app1(),  next if $_ eq 'APP1';
+	$error = $this->dump_app13(), next if $_ eq 'APP13';
+	$error = "Update routine for '$_' not yet implemented"; }
+    # get the size of the new data area
+    my $length = $this->size();
+    # if new size is too large, set the error flag
+    $error = "Segment '${name}' too large (len=${length}, " .
+	"max=${JPEG_SEG_MAX_LEN})" if $length > $JPEG_SEG_MAX_LEN;
+    # if the update failed, revert to the old content
+    if ($error) {
+	$this->warn("Update failed [$error]: reverting to old content ...");
+	$this->{dataref} = $old_content; }
 }
 
 ###########################################################
@@ -211,16 +244,13 @@ sub update {
 sub output_segment_data {
     my ($this, $out) = @_;
     # collect the name of the segment and the length of the data area
-    my $name     = $this->{name};
-    my $length   = $this->size();
-    # the segment lenght must be written to a two bytes field (including
-    # the two bytes themselves). So, the maximum value of $length is
-    # 2^16 - 3. Check and throw an exception in case it is larger.
-    # Do not run the check for raw data or past-the-end data.
-    my $max_length = 2**16 - 3;
+    my $name   = $this->{name};
+    my $length = $this->size();
+    # Check segment length and throw an exception in case it is too
+    # large. Do not run the check for raw data or past-the-end data.
     $this->die(sprintf('Segment %s too large (len=%d, max=%d)',
-		       $this->{name}, $length, $max_length))
-	if $length > $max_length && $name !~ /ECS|Post-EOI/;
+		       $this->{name}, $length, $JPEG_SEG_MAX_LEN))
+	if $length > $JPEG_SEG_MAX_LEN && $name !~ /ECS|Post-EOI/;
     # prepare the segment header (not needed for a raw data segment)
     my $preamble = ( $name =~ /ECS|Post-EOI/ ? "" :
 		     pack("CC", $JPEG_PUNCTUATION, $JPEG_MARKER{$name}) );
@@ -340,20 +370,13 @@ sub size { return length ${$_[0]{dataref}}; }
 sub data { substr(${$_[0]{dataref}}, $_[1], $_[2]); }
 
 ###########################################################
-# This helper method writes into the segment data area,   #
-# thus hiding the details of how the data area itself is  #
-# implemented. Its first argument is a scalar or a scalar #
-# reference, which (or whose content) is appended to the  #
-# current buffer. If the second argument is 'OVERWRITE',  #
-# well ... guess it. The return value is the length of    #
-# the appended string.                                    #
+# This helper method writes into the segment data area.   #
+# The first argument is a scalar or a scalar reference,   #
+# which (or whose content) is appended to the current     #
+# buffer. The method returns the appended string length.  #
 ###########################################################
 sub set_data {
-    my ($this, $addenda, $action) = @_;
-    # clear the current buffer if so requested; set the reference
-    # to a variable containing the null string, not to the null
-    # string directly, which is unmodifiable.
-    $this->{dataref} = \ (my $ns = '') if $action && $action eq 'OVERWRITE';
+    my ($this, $addenda) = @_;
     # get a reference to new data (remember that the
     # first argument can be a scalar or a scalar reference)
     my $addref = (ref $addenda) ? $addenda : \$addenda;

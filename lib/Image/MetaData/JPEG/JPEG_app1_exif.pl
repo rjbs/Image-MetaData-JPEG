@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG;
@@ -344,12 +344,12 @@ sub get_Exif_data {
 # reference to an empty hash means that everything was OK.#
 # ------------------------------------------------------- #
 # $what equal to 'THUMBNAIL' is meant to replace the IFD1 #
-# thumbnail. $data should be a reference to a scalar      #
-# containing the new thumbnail; if it points to an emtpy  #
-# string, the thumbnail is erased. Corresponding fields   #
-# follow the thumbnail (all this is dealt with by a       #
-# special private method). $data undefined DOES NOT erase #
-# the thumbnail, it is an error (too dangerous).          #
+# thumbnail. $data should be a reference to a scalar or   #
+# to a JPEG object containing the new thumbnail ; if it   #
+# points to an emtpy string, the thumbnail is erased.     #
+# Corresponding fields follow the thumbnail (all this is  #
+# dealt with by a private method). $data undefined DOES   #
+# NOT erase the thumbnail, it is an error (too dangerous).#
 # ------------------------------------------------------- #
 # When $what is 'IMAGE_DATA', try to insert first into    #
 # SubIFD, then, into IFD0. This favours SubIFD standard   #
@@ -362,7 +362,12 @@ sub get_Exif_data {
 # delete all the records. We must preserve $REFERENCE     #
 # records, otherwise the corresponding directories would  #
 # be forgotten; we don't want that, for instance, SubIFD  #
-# is deleted when the records of IFD0 are REPLACEd.       #
+# is deleted when the records of IFD0 are REPLACED.       #
+# ------------------------------------------------------- #
+# The fourth argument ($dontupdate) is to be considered   #
+# strictly private. It is used by set_Exif_data itself    #
+# when called with $action eq 'IMAGE_DATA', so that the   #
+# update() routine can be called only once (not twice).   #
 # ------------------------------------------------------- #
 # First, some basic argument checking is performed: the   #
 # segment must be of the appropriate type, $data must be  #
@@ -375,7 +380,7 @@ sub get_Exif_data {
 # there are some record intercorrelations still neglected.#
 ###########################################################
 sub set_Exif_data {
-    my ($this, $data, $what, $action) = @_;
+    my ($this, $data, $what, $action, $dontupdate) = @_;
     # refuse to work unless you are an Exif APP1 segment
     return {'ERROR'=>'Not an Exif APP1 segment'} unless $this->is_app1_Exif();
     # set the default action, if undefined
@@ -388,7 +393,7 @@ sub set_Exif_data {
     # IMAGE_DATA: first, try to insert all tags into SubIFD, then, try
     # to insert rejected data into IFD0, last, return doubly rejected data.
     if ($what eq 'IMAGE_DATA') {
-	my $rejected = $this->set_Exif_data($data, 'SUBIFD_DATA', $action);
+	my $rejected = $this->set_Exif_data($data, 'SUBIFD_DATA', $action, 1);
 	return $this->set_Exif_data($rejected, 'IFD0_DATA', $action); }
     # THUMBNAIL requires a very specific treatment
     return $this->set_Exif_thumbnail($data) if $what eq 'THUMBNAIL';
@@ -430,8 +435,8 @@ sub set_Exif_data {
     # take all records from $accepted and set them into the record
     # list (their order must anambiguous, so perform a clever sorting).
     @$record_list = ordered_record_list($accepted, $path);
-    # remember to commit these changes to the data area
-    $this->update();
+    # commit changes to the data area unless explicitely forbidden
+    $this->update() unless $dontupdate;
     # that's it, return the reference to the rejected data hash
     return $rejected;
 }
@@ -439,38 +444,46 @@ sub set_Exif_data {
 ###########################################################
 # This private method is called by set_Exif_data when the #
 # $what argument is set to 'THUMBNAIL'. $data must be a   #
-# reference to a scalar value (undefined is an error!).   #
-# First, we erase all thumbnail related records from IFD1 #
-# then we reinsert those which are appropriate. Last, the #
-# update method is called (this also fixes some fields).  #
+# reference to a JPEG object or a reference to a scalar   #
+# value containing a valid JPEG stream (an undefined ref. #
+# is considered an error!). First, we erase all thumbnail #
+# related records from IFD1 then we reinsert those which  #
+# are appropriate. Last, the update method is called      #
+# (this also fixes some fields).                          #
 # ------------------------------------------------------- #
-# ($$data eq ''): nothing else to do, thumbnail erased.   #
-# ($$data equal to a JPEG stream): thumbnail data are     #
-#    saved in the root level directory, and a few records #
-#    are added to IFD1: 'JPEGInterchangeFormat' (offset), #
-#    'JPEGInterchangeFormatLength', and 'Compression' set #
+# ($$data is ''): nothing else to do, thumbnail erased.   #
+# ($$data is a JPEG stream or a JPEG object): thumbnail   #
+#   data are saved in the root level directory, and a few #
+#   records are added to IFD1: 'JPEGInterchangeFormat',   #
+#   'JPEGInterchangeFormatLength', and 'Compression' set  #
 #    to six (this indicates a JPEG thumbnail).            #
 ###########################################################
 sub set_Exif_thumbnail {
     my ($this, $dataref) = @_;
-    # $dataref must be a scalar reference; everything else, including an
-    # undefined value, is an error (I don't want the user to erase the
-    # thumbnail by passing an erroneously undefined reference).
-    return{'ERROR'=>'$data not a scalar reference'}if ref $dataref ne 'SCALAR';
+    # this variable holds the thumbnail format
+    my $type = undef;
+    # $dataref must be a valid reference: I don't want the user to be
+    # able to erase the thumbnail by passing an erroneously undef ref.
+    return { 'ERROR' => 'argument is not a reference' } unless ref $dataref;
+    # if $dataref points to an Image::MetaData::JPEG object, replace it
+    # with a reference to its bare content and set $type to 'JPEG'.
+    if ('Image::MetaData::JPEG' eq ref $dataref) {
+	my $r; $dataref->save(\ $r); $dataref = \ $r; $type = 'JPEG'; }
+    # $dataref must now be a scalar reference; everything else is an error
+    return { 'ERROR' => 'not a good reference' } if ref $dataref ne 'SCALAR';
+    # try to recognise the content of $$dataref. If it is defined but empty,
+    # we just need to erase the thumbnail. If it is accepted by the JPEG
+    # ctor or $type is already 'JPEG', we consider it a regular JPEG stream.
+    $type = 'NONE' if length $$dataref == 0;
+    $type = 'JPEG' if ! $type && Image::MetaData::JPEG->new($dataref, '');
+    # If $type is not yet set, generate an error (TIFF not yet supported ...)
+    return { 'Error' => 'unsupported thumbnail format' } unless $type;
     # the following lists contain all records to be erased before inserting
     # the new thumbnail. They are inserted in a hash for faster lookup
     my %thumb_records = map { $_ => 1 } 
     ('Compression', 'JPEGInterchangeFormat', 'JPEGInterchangeFormatLength',
      'StripOffsets','ImageWidth','ImageLength','BitsPerSample',
      'SamplesPerPixel', 'RowsPerStrip', 'StripByteCounts');
-    # try to recognise the content of $$dataref. If it is defined but empty,
-    # we just need to erase the thumbnail. If it is accepted by the JPEG
-    # ctor, we consider it a regular JPEG file.
-    my $type = 'UNKNOWN';
-    $type = 'NONE' if length $$dataref == 0;
-    $type = 'JPEG' if Image::MetaData::JPEG->new($dataref, '');
-    # If $$dataref is not recognised, generate an error ...
-    return {'Error'=>'TIFF thumbnails not yet supported'}if $type eq 'UNKNOWN';
     # get the appropriate record lists (IFD1) (build it if not present)
     my $ifd1_list = $this->build_IFD_directory_tree('APP1@IFD1');    
     # delete all tags mentioned in %forbidden. This is a fresh start before

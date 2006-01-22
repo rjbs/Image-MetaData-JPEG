@@ -17,10 +17,12 @@ my ($segment, $record, $handle, $mem, $result, $dirrec, $problem);
 my $trim = sub { join '\n', map { s/^.*\"(.*)\".*$/$1/; $_ }
 		 grep { /0:/ } split '\n', $_[0] };
 sub reset_mem { close $handle if $handle; open($handle, '>', \$mem); }
-
+sub trap_warn { local $SIG{'__WARN__'} = sub { $problem = shift }; 
+		$problem = undef; eval($_[0]); }
+	       
 #=======================================
 diag "Testing [Image::MetaData::JPEG::Segment]";
-plan tests => 62;
+plan tests => 61;
 #=======================================
 
 BEGIN { $::pkgname = 'Image::MetaData::JPEG';
@@ -106,8 +108,8 @@ is( $result, $segment->{records},
     "search_record_value() without args gives root" );
 
 #########################
-eval { $segment->update() };
-isnt( $@, '', "you cannot 'update' this yet" );
+trap_warn('$segment->update()');
+like( $problem, qr/[Rr]everting/, "you cannot 'update' this yet" );
 
 #########################
 $segment->reparse_as('COM');
@@ -118,8 +120,8 @@ $segment->reparse_as('APP2');
 ok( $segment->{error}, "... but not as an APP2" );
 
 #########################
-$segment->reparse_as('SOS');
-reset_mem(); $result = $segment->output_segment_data($handle);
+$segment->reparse_as('SOS'); reset_mem(); 
+$result = $segment->output_segment_data($handle);
 ok( $result, "output_segment_data does not fail" );
 
 #########################
@@ -144,18 +146,14 @@ is( $mem, "$com\000\002", "output_segment_data works with empty comments" );
 
 #########################
 $segment->search_record('Comment')->set_value('*' x 2**16);
-eval { $segment->update() };
-is( $@, '', "an empty segment can be modified and updated" );
+trap_warn('$segment->update()');
+like( $problem, qr/[Rr]everting/, "size check works in forged comment" );
 
 #########################
 $segment = $::cname->new('COM', \ '');
 $segment->search_record('Comment')->set_value('*' x 2**16);
-eval { $segment->update() };
-is( $@, '', "an empty segment can be modified and updated (2)" );
-
-#########################
-eval { reset_mem(); $segment->output_segment_data($handle) };
-isnt( $@, '', "size check works in forged comment" );
+trap_warn('$segment->update()');
+like( $problem, qr/[Rr]everting/, "size check works in forged comment (2)" );
 
 #########################
 $segment = $::cname->new('ECS', \ $forged_sos);

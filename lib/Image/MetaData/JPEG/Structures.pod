@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 
@@ -412,8 +412,9 @@ actually used (a subset of the standard) are always standard; therefore, we
 likely do not have the IPTC block spanning more than one APP13 segment. The
 record types defined by the IPTC-NAA standard are the following (but the
 "pseudo"-standard by Adobe for APP13 IPTC data is restricted to the first
-application record, 2:xx, I believe, because the enveloping structure is
-replaced by the resource data block):
+application record, 2:xx, and sometimes to the envelope record, 1:xx, I
+believe, because everything else can be accomodated more simply by other
+JPEG Segments):
 
     [Record name]                [dataset record number]
     ----------------------------------------------------
@@ -434,7 +435,7 @@ Stefano Bettelli, B<bettelli@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2004,2005 by Stefano Bettelli
+Copyright (C) 2004,2005,2006 by Stefano Bettelli
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU L<General Public License|perlgpl>. See the

@@ -57,7 +57,7 @@ my $IMAGE_data = {
     &$val('SpectralSensitivity')      =>  'a lot',
     &$val('ISOSpeedRatings')          => [1, 2, 3, 4],
     &$val('XResolution')              => [31000, 65536],
-    &$val('YResolution')              => [1, 72],
+    &$val('YResolution')              => [72, 1],
     &$val('ResolutionUnit')           =>  3,
     'PhotometricInterpretation'       =>  2,
     'PlanarConfiguration'             =>  2,
@@ -111,8 +111,15 @@ my $must_go_into_SubIFD = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (IMAGE_DATA & ROOT_DATA)";
-plan tests => 51;
+plan tests => 52;
 #=======================================
+
+######################### Redefine Segment's update() to check # of calls
+{ no warnings; no strict; $d1 = 0;
+  local *{"${cname}::Segment::update"} = sub { ++$d1; };
+  $image = $cname->new($tphoto, '^APP1$');
+  $image->set_Exif_data($IMAGE_data, 'IMAGE_DATA', 'ADD');
+  is( $d1, 1, "update() called only once with IMAGE_DATA" ); }
 
 #########################
 $image = $cname->new($tphoto, '^APP1$');
@@ -146,7 +153,7 @@ is_deeply( $hash, {}, "REPLACing in the image works" );
 #########################
 $image->set_Exif_data({}, 'IMAGE_DATA', 'REPLACE');
 $hash = $image->get_Exif_data('IMAGE_DATA', 'TEXTUAL');
-is_deeply( $$hash{'XResolution'}, [1,72], "Automatic IFD0 XResolution works" );
+is_deeply( $$hash{'XResolution'}, [72,1], "Automatic IFD0 XResolution works" );
 
 #########################
 is_deeply( $$hash{'YCbCrPositioning'}, [1], "... also YCbCrPositioning" );

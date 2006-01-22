@@ -58,7 +58,7 @@ for my $filename (@docfiles) {
 }
 
 #cover -delete
-#HARNESS_PERL_SWITCHES=-MDevel::Cover make test
+#HARNESS_PERL_SWITCHES=-MDevel::Cover DEVEL_COVER_OPTIONS=+ignore,/usr/,-coverage,statement,branch,condition,subroutine make test
 #cover
 
 ### Local Variables: ***

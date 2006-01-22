@@ -86,7 +86,7 @@ Original JPEG file: t/test_photo.jpg
  	 	 	 	[                FocusMode]<......> = [     BYTE]  0
  	 	 	 	[                ---0x0031]<......> = [     BYTE]  2
  	 	 	 	[        ---VariousModes_3]<......> = [    SHORT]  64511
- 	 	 	 	[             PanoramaMode]<......> = [    SHORT]  0
+ 	 	 	 	[             PanoramaMode]<......> = [   SSHORT]  0
  	 	 	 	[          SubjectDistance]<......> = [    SHORT]  150
  	 	 	 	[             WhiteBalance]<......> = [     BYTE]  0
  	 	 	 	[                ---0x0039]<......> = [    UNDEF] '\01\00\06\00\00\00\00\00\00\00\00\00\00'  (14 more chars)
@@ -99,7 +99,7 @@ Original JPEG file: t/test_photo.jpg
  	 	 	 	[               ColourMode]<......> = [    SHORT]  1
  	 	 	 	[        DigitalZoomFactor]<......> = [    SHORT]  100
  	 	 	 	[                ---0x0062]<......> = [     BYTE]  0
- 	 	 	 	[                Sharpness]<......> = [     BYTE]  1
+ 	 	 	 	[                Sharpness]<......> = [    SBYTE]  1
  	 	 	 	[                   binary]<......> = [    UNDEF] '\ff\fe\fb\fd\f7\ff\fd\ff\ff\ff\ff\fd\ff'  (795 more chars)
  	 	 	 	 	********** APP1 --> IFD0 --> SubIFD --> MakerNoteData_Kodak --> special ********** ( 4 records)
  	 	 	 	 	[                 ORIGINAL]<......> = [    UNDEF] 'KDK INFODX3900  \03\02\00\00\08p\05\a0'   (900 more chars)
@@ -173,9 +173,9 @@ Original JPEG file: t/test_photo.jpg
  	 	[                  BlueTRC]<0x62545243> = [    UNDEF] <curv>'\00\00\04\00\00\00\00\05\00\0a\00\0f\00'  (2039 more chars)
    5444B <0xed APP13>
  	[               Identifier]<......> = [    ASCII] "Photoshop 3.0".
- 	[             IPTC_RECORDS]<......> = [REFERENCE]  --> 0x838825c
+ 	[            IPTC_RECORD_2]<......> = [REFERENCE]  --> 0x838825c
  	[        Photoshop_RECORDS]<......> = [REFERENCE]  --> 0x838c878
- 	 	********** APP13 --> IPTC_RECORDS ********** (18 records)
+ 	 	********** APP13 --> IPTC_RECORD_2 ********** (18 records)
  	 	[            RecordVersion]<0x0000> = [    ASCII] "\00\02"
  	 	[         Caption/Abstract]<0x0078> = [    ASCII] "Communications"
  	 	[            Writer/Editor]<0x007a> = [    ASCII] "sss cvbghjn"

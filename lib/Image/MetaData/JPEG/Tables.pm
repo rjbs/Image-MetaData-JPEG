@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Tables;
@@ -24,7 +24,7 @@ our %EXPORT_TAGS =                                                           #
      RecordProps => [qw(@JPEG_RECORD_TYPE_NAME @JPEG_RECORD_TYPE_LENGTH),    #
 		     qw(@JPEG_RECORD_TYPE_CATEGORY @JPEG_RECORD_TYPE_SIGN)], #
      Endianness  => [qw($NATIVE_ENDIANNESS $BIG_ENDIAN $LITTLE_ENDIAN)],     #
-     JPEGgrammar => [qw($JPEG_PUNCTUATION %JPEG_MARKER)],                    #
+     JPEGgrammar => [qw($JPEG_PUNCTUATION %JPEG_MARKER $JPEG_SEG_MAX_LEN)],  #
      TagsAPP0    => [qw($APP0_JFIF_TAG $APP0_JFXX_TAG $APP0_JFXX_JPG),       #
 		     qw($APP0_JFXX_1B $APP0_JFXX_3B $APP0_JFXX_PAL)],        #
      TagsAPP1    => [qw($APP1_EXIF_TAG $APP1_XMP_TAG $APP1_TIFF_SIG),        #
@@ -47,8 +47,12 @@ Exporter::export_ok_tags                                                     #
 #============================================================================#
 #============================================================================#
 # Constants for the grammar of a JPEG files. You can find here everything    #
-# about segment markers as well as the JPEG puncutation mark.                # 
+# about segment markers as well as the JPEG puncutation mark. The maximum    #
+# length of the data area of a standard JPEG segment is determined by the    #
+# fact that the segment lenght must be written to a two bytes field (inclu-  #
+# ding the two bytes themselves (so, it is 2^16 - 3).                        #
 #----------------------------------------------------------------------------#
+our $JPEG_SEG_MAX_LEN = 2**16 - 3; # data area max length for a std segment  #
 our $JPEG_PUNCTUATION = 0xff; # constant prefixed to every JPEG marker       #
 our %JPEG_MARKER =            # non-repetitive JPEG markers                  #
     (TEM => 0x01,  # for TEMporary private use in arithmetic coding          #
@@ -118,8 +122,8 @@ our @JPEG_RECORD_TYPE_SIGN     = generate_array($RECORD_TYPE_GENERAL, 3);    #
 #============================================================================#
 #============================================================================#
 #============================================================================#
-# The following three tags are related to endianness. The endianness of the  #
-# current machine is detected every time with a simple procedure.            #
+# These tags are related to endianness. The endianness of the current        #
+# machine is detected every time with a simple procedure.                    #
 #----------------------------------------------------------------------------#
 my ($__short, $__byte1, $__byte2) = unpack "SCC", "\111\333" x 2;            #
 our $BIG_ENDIAN			= 'MM';                                      #
@@ -148,7 +152,7 @@ our $APP13_PHOTOSHOP_TYPE	= '8BIM';                                    #
 our $APP13_PHOTOSHOP_IPTC	= 0x0404;                                    #
 our $APP13_PHOTOSHOP_DIRNAME    = 'Photoshop_RECORDS';                       #
 our $APP13_IPTC_TAGMARKER	= 0x1c;                                      #
-our $APP13_IPTC_DIRNAME         = 'IPTC_RECORDS';                            #
+our $APP13_IPTC_DIRNAME         = 'IPTC_RECORD';                             #
 our $APP14_PHOTOSHOP_IDENTIFIER	= 'Adobe';                                   #
 #============================================================================#
 #============================================================================#
@@ -161,15 +165,18 @@ my $re_integer = '\d+';                       # a generic integer number     #
 my $re_signed  = join('', '-?', $re_integer); # a generic signed integer num #
 my $re_float   = '[+-]?\d+(|.\d+)';           # a generic floating point     #
 my $re_Cstring = '.*\000';                    # a null-terminated string     #
-my $re_year    = '(19|20)\d\d';               # YYYY (from 1900 only ...)    #
-my $re_month   = '(0\d|1[0-2])';              # MM (month in 1-12)           #
+my $re_yr18    = '(18|19|20)\d\d';            # YYYY (from 1800AD only ...)  #
+my $re_year    = '\d{4}';                     # YYYY (from 0AD on)           #
+my $re_month   = '(0[1-9]|1[0-2])';           # MM (month in 1-12)           #
 my $re_day     = '(0[1-9]|[12]\d|3[01])';     # DD (day in 1-31)             #
 my $re_hour    = '([01]\d|2[0-3])';           # HH (hour in 0-23)            #
 my $re_minute  = '[0-5]\d';                   # MM (minute in 0-59)          #
 my $re_second  = $re_minute;                  # SS (seconds like minutes)    #
 my $re_zone    = join('',  $re_hour, $re_minute);             # HHMM         #
+my $re_dt18    = join('',  $re_yr18, $re_month,  $re_day);    # YYYYMMDD     #
 my $re_date    = join('',  $re_year, $re_month,  $re_day);    # YYYYMMDD     #
 my $re_time    = join('',  $re_hour, $re_minute, $re_second); # HHMMSS       #
+my $re_dt18_cl = join(':', $re_yr18, $re_month,  $re_day);    # YYYY:MM:DD   #
 my $re_date_cl = join(':', $re_year, $re_month,  $re_day);    # YYYY:MM:DD   #
 my $re_time_cl = join(':', $re_hour, $re_minute, $re_second); # HH:MM:SS     #
 #============================================================================#
@@ -216,15 +223,15 @@ my $IFD_integer  = $re_integer;              # a generic integer number      #
 my $IFD_signed   = $re_signed;               # a generic signed integer num  #
 my $IFD_float    = $re_float;                # a generic floating point      #
 my $IFD_Cstring  = $re_Cstring;              # a null-terminated string      #
-my $IFD_dt_full  = $re_date_cl.' '.$re_time_cl; # YYYY:MM:DD HH:MM:SS        #
+my $IFD_dt_full  = $re_dt18_cl.' '.$re_time_cl; # YYYY:MM:DD HH:MM:SS        #
 my $IFD_datetime = '('.$IFD_dt_full.'|    :  :     :  :  |\s{19})\000';      #
 #--- Special screen rules for IFD0 and IFD1 ---------------------------------#
 # a YCbCrSubSampling tag indicates the ratio of chrominance components. Its  #
 # value can be only [2,1] (for YCbCr 4:2:2) or [2,2] (for YCbCr 4:2:0).      #
 my $SSR_YCCsampl = sub { die unless $_[0] == 2 && $_[1] =~ /1|2/; };         #
 #--- Mandatory records for IFD0 and IFD1 (not calculated) -------------------#
-my $HASH_APP1_IFD01_MANDATORY = {'XResolution'               => [1, 72],     #
-				 'YResolution'               => [1, 72],     #
+my $HASH_APP1_IFD01_MANDATORY = {'XResolution'               => [72, 1],     #
+				 'YResolution'               => [72, 1],     #
 				 'ResolutionUnit'            =>  2, };       #
 my $HASH_APP1_IFD0_MANDATORY  = {%$HASH_APP1_IFD01_MANDATORY,                #
 				 'YCbCrPositioning'          =>  1, };       #
@@ -557,7 +564,7 @@ my $HASH_INTEROP_GENERAL =                                                   #
 # Fields: 0 -> name, 1 -> type, 2 -> count, 3 -> matching regular            #
 #----------------------------------------------------------------------------#
 my $GPS_re_Cstring   = $re_Cstring;            # a null terminated string    #
-my $GPS_re_date      = $re_date_cl . '\000';   # YYYY:MM:DD null terminated  #
+my $GPS_re_date      = $re_dt18_cl . '\000';   # YYYY:MM:DD null terminated  #
 my $GPS_re_number    = $re_integer;            # a generic integer number    #
 my $GPS_re_NS        = '[NS]\000';             # latitude reference          #
 my $GPS_re_EW        = '[EW]\000';             # longitude reference         #
@@ -706,22 +713,46 @@ my $HASH_APP3_BORDERS =
 #============================================================================#
 #============================================================================#
 # See the "VALID TAGS FOR IPTC DATA" section in the Image::MetaData::JPEG    #
-# module perldoc page for further details on IPTC data.                      #
+# module perldoc page for further details on IPTC data. Also 1:xx datasets   #
+# are documented here, although only 2:xx datasets are likely to be found.   #
+# Note: I don't know why the standard says 4 for 'RecordVersion'; it turns   #
+# out that you always find 2 in JPEG files.                                  #
 #----------------------------------------------------------------------------#
-# Hash keys are numeric tags, here written in decimal base.                  #
+# Hash keys are numeric tags in decimal (the IPTC standard uses base 10...). #
 # Fields: 0 -> Tag name, 1 -> repeatability ('N' means non-repeatable),      #
 #         2,3 -> min and max length, 4 -> regular expression to match.       #
+# The regular expression for "words" is what they call graphic characters.   #
 #----------------------------------------------------------------------------#
 my $IPTC_re_word = '^[^\000-\040\177]*$';                   # words          #
 my $IPTC_re_line = '^[^\000-\037\177]*$';                   # words + spaces #
 my $IPTC_re_para = '^[^\000-\011\013\014\016-\037\177]*$';  # line + CR + LF #
-my $IPTC_re_date = $re_date;                                # CCYYMMDD       #
+my $IPTC_re_dt18 = $re_dt18;                                # CCYYMMDD       #
+my $IPTC_re_date = $re_date;                                # CCYYMMDD full  #
 my $IPTC_re_dura = $re_time;                                # HHMMSS         #
 my $IPTC_re_time = $IPTC_re_dura . '[\+-]' . $re_zone;      # HHMMSS+/-HHMM  #
 my $vchr         = '\040-\051\053-\071\073-\076\100-\176';  # (SubjectRef.)  #
 my $IPTC_re_sure='['.$vchr.']{1,32}?:[01]\d{7}?(:['.$vchr.'\s]{0,64}?){3}?'; #
-#--- Legal records' list ----------------------------------------------------#
-my $HASH_IPTC_GENERAL =                                                      #
+#--- Mandatory records ------------------------------------------------------#
+my $HASH_IPTC_MANDATORY_1 = {'ModelVersion'  => "\000\004" };                #
+my $HASH_IPTC_MANDATORY_2 = {'RecordVersion' => "\000\002" };                #
+#--- Legal records' list ( datasets 1:xx ) ----------------------------------#
+my $HASH_IPTC_GENERAL_1 =                                                    #
+{0   => ['ModelVersion',                'N', 2,  2, 'binary'              ], #
+ 5   => ['Destination',                 ' ',1,1024, $IPTC_re_word         ], #
+ 20  => ['FileFormat',                  'N', 2,  2, 'invalid,binary'      ], #
+ 22  => ['FileFormatVersion',           'N', 2,  2, 'invalid,binary'      ], #
+ 30  => ['ServiceIdentifier',           'N', 0, 10, $IPTC_re_word         ], #
+ 40  => ['EnvelopeNumber',              'N', 8,  8, 'invalid,\d{8}'       ], #
+ 50  => ['ProductID',                   ' ', 0, 32, $IPTC_re_word         ], #
+ 60  => ['EnvelopePriority',            'N', 1,  1, 'invalid,[1-9]'       ], #
+ 70  => ['DataSent',                    'N', 8,  8, 'invalid,date'        ], #
+ 80  => ['TimeSent',                    'N',11, 11, 'invalid,time'        ], #
+ 90  => ['CodedCharacterSet',           'N', 0, 32, '\033.{1,3}'          ], #
+ 100 => ['UNO',                         'N',14, 80, 'invalid'             ], #
+ 120 => ['ARMIdentifier',               'N', 2,  2, 'invalid,binary'      ], #
+ 122 => ['ARMVersion',                  'N', 2,  2, 'invalid,binary'    ],}; #
+#--- Legal records' list ( datasets 2:xx ) ----------------------------------#
+my $HASH_IPTC_GENERAL_2 =                                                    #
 {0   => ['RecordVersion',               'N', 2,  2, 'binary'              ], #
  3   => ['ObjectTypeReference',         'N', 3, 67, '\d{2}?:[\w\s]{0,64}?'], #
  4   => ['ObjectAttributeReference',    ' ', 4, 68, '\d{3}?:[\w\s]{0,64}?'], #
@@ -736,9 +767,9 @@ my $HASH_IPTC_GENERAL =                                                      #
  25  => ['Keywords',                    ' ', 1, 64, $IPTC_re_line         ], #
  26  => ['ContentLocationCode',         ' ', 3,  3, '[A-Z]{3}'            ], #
  27  => ['ContentLocationName',         ' ', 1, 64, $IPTC_re_line         ], #
- 30  => ['ReleaseDate',                 'N', 8,  8, $IPTC_re_date         ], #
+ 30  => ['ReleaseDate',                 'N', 8,  8, $IPTC_re_dt18         ], #
  35  => ['ReleaseTime',                 'N',11, 11, $IPTC_re_time         ], #
- 37  => ['ExpirationDate',              'N', 8,  8, $IPTC_re_date         ], #
+ 37  => ['ExpirationDate',              'N', 8,  8, $IPTC_re_dt18         ], #
  38  => ['ExpirationTime',              'N',11, 11, $IPTC_re_time         ], #
  40  => ['SpecialInstructions',         'N', 1,256, $IPTC_re_line         ], #
  42  => ['ActionAdvised',               'N', 2,  2, '0[1-4]'              ], #
@@ -747,7 +778,7 @@ my $HASH_IPTC_GENERAL =                                                      #
  50  => ['ReferenceNumber',             ' ', 8,  8, 'invalid'             ], #
  55  => ['DateCreated',                 'N', 8,  8, $IPTC_re_date         ], #
  60  => ['TimeCreated',                 'N',11, 11, $IPTC_re_time         ], #
- 62  => ['DigitalCreationDate',         'N', 8,  8, $IPTC_re_date         ], #
+ 62  => ['DigitalCreationDate',         'N', 8,  8, $IPTC_re_dt18         ], #
  63  => ['DigitalCreationTime',         'N',11, 11, $IPTC_re_time         ], #
  65  => ['OriginatingProgram',          'N', 1, 32, $IPTC_re_line         ], #
  70  => ['ProgramVersion',              'N', 1, 10, $IPTC_re_line         ], #
@@ -788,66 +819,70 @@ my $HASH_IPTC_GENERAL =                                                      #
 # [tags 0x07d0 --> 0x0bb6 are reserved for path information]                 #
 #----------------------------------------------------------------------------#
 # Hash keys are numeric tags, here written in hexadecimal base.              #
-# Fields: 0 -> Tag name (syntax is not yet checked, but this could change).  #
+# Fields: 0 -> Tag name, 1 -> repeatability ('N' means non-repeatable),      #
+#         2,3 -> min and max length, 4 -> regular expression to match.       #
+# The syntax specifications are currently just placeholder, but this could   #
+# change in future. The only effect is to inhibit a direct assignement of    #
+# the 'IPTC/NAA' dataset, which must be modified with specialised routines.  #
 #----------------------------------------------------------------------------#
 my $HASH_PHOTOSHOP_GENERAL =                                                 #
-{0x03e8 => ['Photoshop2Info',                    ],                          #
- 0x03e9 => ['MacintoshPrintInfo',                ],                          #
- 0x03eb => ['Photoshop2ColorTable',              ],                          #
- 0x03ed => ['ResolutionInfo',                    ],                          #
- 0x03ee => ['AlphaChannelsNames',                ],                          #
- 0x03ef => ['DisplayInfo',                       ],                          #
- 0x03f0 => ['PStringCaption',                    ],                          #
- 0x03f1 => ['BorderInformation',                 ],                          #
- 0x03f2 => ['BackgroundColor',                   ],                          #
- 0x03f3 => ['PrintFlags',                        ],                          #
- 0x03f4 => ['BWHalftoningInfo',                  ],                          #
- 0x03f5 => ['ColorHalftoningInfo',               ],                          #
- 0x03f6 => ['DuotoneHalftoningInfo',             ],                          #
- 0x03f7 => ['BWTransferFunc',                    ],                          #
- 0x03f8 => ['ColorTransferFuncs',                ],                          #
- 0x03f9 => ['DuotoneTransferFuncs',              ],                          #
- 0x03fa => ['DuotoneImageInfo',                  ],                          #
- 0x03fb => ['EffectiveBW',                       ],                          #
- 0x03fc => ['ObsoletePhotoshopTag1',             ],                          #
- 0x03fd => ['EPSOptions',                        ],                          #
- 0x03fe => ['QuickMaskInfo',                     ],                          #
- 0x03ff => ['ObsoletePhotoshopTag2',             ],                          #
- 0x0400 => ['LayerStateInfo',                    ],                          #
- 0x0401 => ['WorkingPathInfo',                   ],                          #
- 0x0402 => ['LayersGroupInfo',                   ],                          #
- 0x0403 => ['ObsoletePhotoshopTag3',             ],                          #
- 0x0404 => ['IPTC/NAA',                          ],                          #
- 0x0405 => ['RawImageMode',                      ],                          #
- 0x0406 => ['JPEGQuality',                       ],                          #
- 0x0408 => ['GridGuidesInfo',                    ],                          #
- 0x0409 => ['ThumbnailResource',                 ],                          #
- 0x040a => ['CopyrightFlag',                     ],                          #
- 0x040b => ['URL',                               ],                          #
- 0x040c => ['ThumbnailResource2',                ],                          #
- 0x040d => ['GlobalAngle',                       ],                          #
- 0x040e => ['ColorSamplersResource',             ],                          #
- 0x040f => ['ICCProfile',                        ],                          #
- 0x0410 => ['Watermark',                         ],                          #
- 0x0411 => ['ICCUntagged',                       ],                          #
- 0x0412 => ['EffectsVisible',                    ],                          #
- 0x0413 => ['SpotHalftone',                      ],                          #
- 0x0414 => ['IDsBaseValue',                      ],                          #
- 0x0415 => ['UnicodeAlphaNames',                 ],                          #
- 0x0416 => ['IndexedColourTableCount',           ],                          #
- 0x0417 => ['TransparentIndex',                  ],                          #
- 0x0419 => ['GlobalAltitude',                    ],                          #
- 0x041a => ['Slices',                            ],                          #
- 0x041b => ['WorkflowURL',                       ],                          #
- 0x041c => ['JumpToXPEP',                        ],                          #
- 0x041d => ['AlphaIdentifiers',                  ],                          #
- 0x041e => ['URLList',                           ],                          #
- 0x0421 => ['VersionInfo',                       ],                          #
- 0x0bb7 => ['ClippingPathName',                  ],                          #
- 0x2710 => ['PrintFlagsInfo',                    ], };                       #
+{0x03e8 => ['Photoshop2Info',           ' ', 0, 65535, 'binary'           ], #
+ 0x03e9 => ['MacintoshPrintInfo',       ' ', 0, 65535, 'binary'           ], #
+ 0x03eb => ['Photoshop2ColorTable',     ' ', 0, 65535, 'binary'           ], #
+ 0x03ed => ['ResolutionInfo',           ' ', 0, 65535, 'binary'           ], #
+ 0x03ee => ['AlphaChannelsNames',       ' ', 0, 65535, 'binary'           ], #
+ 0x03ef => ['DisplayInfo',              ' ', 0, 65535, 'binary'           ], #
+ 0x03f0 => ['PStringCaption',           ' ', 0, 65535, 'binary'           ], #
+ 0x03f1 => ['BorderInformation',        ' ', 0, 65535, 'binary'           ], #
+ 0x03f2 => ['BackgroundColor',          ' ', 0, 65535, 'binary'           ], #
+ 0x03f3 => ['PrintFlags',               ' ', 0, 65535, 'binary'           ], #
+ 0x03f4 => ['BWHalftoningInfo',         ' ', 0, 65535, 'binary'           ], #
+ 0x03f5 => ['ColorHalftoningInfo',      ' ', 0, 65535, 'binary'           ], #
+ 0x03f6 => ['DuotoneHalftoningInfo',    ' ', 0, 65535, 'binary'           ], #
+ 0x03f7 => ['BWTransferFunc',           ' ', 0, 65535, 'binary'           ], #
+ 0x03f8 => ['ColorTransferFuncs',       ' ', 0, 65535, 'binary'           ], #
+ 0x03f9 => ['DuotoneTransferFuncs',     ' ', 0, 65535, 'binary'           ], #
+ 0x03fa => ['DuotoneImageInfo',         ' ', 0, 65535, 'binary'           ], #
+ 0x03fb => ['EffectiveBW',              ' ', 0, 65535, 'binary'           ], #
+ 0x03fc => ['ObsoletePhotoshopTag1',    ' ', 0, 65535, 'binary'           ], #
+ 0x03fd => ['EPSOptions',               ' ', 0, 65535, 'binary'           ], #
+ 0x03fe => ['QuickMaskInfo',            ' ', 0, 65535, 'binary'           ], #
+ 0x03ff => ['ObsoletePhotoshopTag2',    ' ', 0, 65535, 'binary'           ], #
+ 0x0400 => ['LayerStateInfo',           ' ', 0, 65535, 'binary'           ], #
+ 0x0401 => ['WorkingPathInfo',          ' ', 0, 65535, 'binary'           ], #
+ 0x0402 => ['LayersGroupInfo',          ' ', 0, 65535, 'binary'           ], #
+ 0x0403 => ['ObsoletePhotoshopTag3',    ' ', 0, 65535, 'binary'           ], #
+ 0x0404 => ['IPTC/NAA',                 ' ', 0, 65535, 'invalid'          ], #
+ 0x0405 => ['RawImageMode',             ' ', 0, 65535, 'binary'           ], #
+ 0x0406 => ['JPEGQuality',              ' ', 0, 65535, 'binary'           ], #
+ 0x0408 => ['GridGuidesInfo',           ' ', 0, 65535, 'binary'           ], #
+ 0x0409 => ['ThumbnailResource',        ' ', 0, 65535, 'binary'           ], #
+ 0x040a => ['CopyrightFlag',            ' ', 0, 65535, 'binary'           ], #
+ 0x040b => ['URL',                      ' ', 0, 65535, 'binary'           ], #
+ 0x040c => ['ThumbnailResource2',       ' ', 0, 65535, 'binary'           ], #
+ 0x040d => ['GlobalAngle',              ' ', 0, 65535, 'binary'           ], #
+ 0x040e => ['ColorSamplersResource',    ' ', 0, 65535, 'binary'           ], #
+ 0x040f => ['ICCProfile',               ' ', 0, 65535, 'binary'           ], #
+ 0x0410 => ['Watermark',                ' ', 0, 65535, 'binary'           ], #
+ 0x0411 => ['ICCUntagged',              ' ', 0, 65535, 'binary'           ], #
+ 0x0412 => ['EffectsVisible',           ' ', 0, 65535, 'binary'           ], #
+ 0x0413 => ['SpotHalftone',             ' ', 0, 65535, 'binary'           ], #
+ 0x0414 => ['IDsBaseValue',             ' ', 0, 65535, 'binary'           ], #
+ 0x0415 => ['UnicodeAlphaNames',        ' ', 0, 65535, 'binary'           ], #
+ 0x0416 => ['IndexedColourTableCount',  ' ', 0, 65535, 'binary'           ], #
+ 0x0417 => ['TransparentIndex',         ' ', 0, 65535, 'binary'           ], #
+ 0x0419 => ['GlobalAltitude',           ' ', 0, 65535, 'binary'           ], #
+ 0x041a => ['Slices',                   ' ', 0, 65535, 'binary'           ], #
+ 0x041b => ['WorkflowURL',              ' ', 0, 65535, 'binary'           ], #
+ 0x041c => ['JumpToXPEP',               ' ', 0, 65535, 'binary'           ], #
+ 0x041d => ['AlphaIdentifiers',         ' ', 0, 65535, 'binary'           ], #
+ 0x041e => ['URLList',                  ' ', 0, 65535, 'binary'           ], #
+ 0x0421 => ['VersionInfo',              ' ', 0, 65535, 'binary'           ], #
+ 0x0bb7 => ['ClippingPathName',         ' ', 0, 65535, 'binary'           ], #
+ 0x2710 => ['PrintFlagsInfo',           ' ', 0, 65535, 'binary'        ], }; #
 #----------------------------------------------------------------------------#
-for (0x07d0..0x0bb6) {                                                       #
-    $$HASH_PHOTOSHOP_GENERAL{$_} = [sprintf "PathInfo_%3x", $_]; }           #
+$$HASH_PHOTOSHOP_GENERAL{$_} =                                               #
+    [sprintf("PathInfo_%3x",$_),' ',0,65535,'binary'] for 0x07d0..0x0bb6;    #
 #============================================================================#
 #============================================================================#
 #============================================================================#
@@ -857,7 +892,8 @@ for (0x07d0..0x0bb6) {                                                       #
 # %$HASH_APP1_IFD is built by merging the first column of 3 different hashes.#
 #----------------------------------------------------------------------------#
 my $HASH_PHOTOSHOP_TAGS  = generate_lookup($HASH_PHOTOSHOP_GENERAL     ,0);  #
-my $HASH_IPTC_TAGS       = generate_lookup($HASH_IPTC_GENERAL          ,0);  #
+my $HASH_IPTC_TAGS_1     = generate_lookup($HASH_IPTC_GENERAL_1        ,0);  #
+my $HASH_IPTC_TAGS_2     = generate_lookup($HASH_IPTC_GENERAL_2        ,0);  #
 my $HASH_APP1_ROOT       = generate_lookup($HASH_APP1_ROOT_GENERAL     ,0);  #
 my $HASH_APP1_GPS        = generate_lookup($HASH_GPS_GENERAL           ,0);  #
 my $HASH_APP1_INTEROP    = generate_lookup($HASH_INTEROP_GENERAL       ,0);  #
@@ -890,6 +926,17 @@ $$HASH_APP1_SUBIFD{'MakerNoteData_' . $_} =                                  #
 #============================================================================#
 #============================================================================#
 #============================================================================#
+# Syntax tables and mandatory records tables for IPTC data are hidden in the #
+# corresponding tag hashes. Another %IFD_SUBDIRS is overkill here.           #
+#----------------------------------------------------------------------------#
+$$HASH_IPTC_TAGS_1{__syntax}    = $HASH_IPTC_GENERAL_1;                      #
+$$HASH_IPTC_TAGS_1{__mandatory} = $HASH_IPTC_MANDATORY_1;                    #
+$$HASH_IPTC_TAGS_2{__syntax}    = $HASH_IPTC_GENERAL_2;                      #
+$$HASH_IPTC_TAGS_2{__mandatory} = $HASH_IPTC_MANDATORY_2;                    #
+$$HASH_PHOTOSHOP_TAGS{__syntax} = $HASH_PHOTOSHOP_GENERAL;                   #
+#============================================================================#
+#============================================================================#
+#============================================================================#
 # The following hash is the database for the tag-to-tagname translation; of  #
 # course, records with a textual tag are not listed here. The navigation     #
 # through this structure is best done with the help of the JPEG_lookup       #
@@ -901,12 +948,11 @@ my $JPEG_RECORD_NAME =                                                       #
 	   IFD1                     => $HASH_APP1_IFD, },      # thumbnail   #
  APP2  => {TagTable                 => $HASH_APP2_ICC, },      # ICC data    #
  APP3  => {IFD0                     => $HASH_APP3_IFD, },      # main image  #
- APP13 => {$APP13_IPTC_DIRNAME      => $HASH_IPTC_TAGS,        # PS:IPTC     #
-	   $APP13_PHOTOSHOP_DIRNAME => $HASH_PHOTOSHOP_TAGS,   # PS:non-IPTC #
-	   '__syntax_IPTC'          => $HASH_IPTC_GENERAL },}; # PS:IPTC syn #
+ APP13 => {$APP13_PHOTOSHOP_DIRNAME => $HASH_PHOTOSHOP_TAGS,   # PS:non-IPTC #
+	   $APP13_IPTC_DIRNAME.'_1' => $HASH_IPTC_TAGS_1,      # PS:IPTC R:1 #
+	   $APP13_IPTC_DIRNAME.'_2' => $HASH_IPTC_TAGS_2, }, };# PS:IPTC R:2 #
 #----------------------------------------------------------------------------#
-
-
+    
 ###########################################################
 # This helper function returns record data from the       #
 # %$JPEG_RECORD_NAME hash. The arguments are first joined #

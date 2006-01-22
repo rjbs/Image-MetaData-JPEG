@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
@@ -1258,7 +1258,7 @@ sub parse_app12 {
 # Adobe). The structure of an APP13 segment is as follows #
 #---------------------------------------------------------#
 # 14 bytes  identifier, e.g. "Photoshop 3.0\000"          #
-#  8 bytes  resolution (?), Photoshop 2.5 only            #
+#  8 bytes  resolution (?, Photoshop 2.5 only)            #
 #   .....   sequence of Photoshop Image Resource blocks   #
 #=========================================================#
 # The sequence of resource blocks may require additional  #
@@ -1302,7 +1302,7 @@ sub parse_app13 {
 # This method parses an APP13 resource data block (TODO:  #
 # blocks spanning multiple APP13s). Currently, it treates #
 # in details IPTC (International Press Telecommunications #
-# Council) blocks, and just lists the other tags (which   #
+# Council) blocks, and just saves the other tags (which   #
 # are, however, in general, much simpler). The only argu- #
 # ment is the current offset in the data area of this     #
 # object. The output is the new offset after this block.  #
@@ -1317,9 +1317,9 @@ sub parse_app13 {
 #---------------------------------------------------------#
 # The content of each Photoshop non-IPTC data block is    #
 # transformed into a record and put in a common subdir.   #
-# The IPTC data block instead is analysed in detail, and  #
-# all the findings are stored in another subdir. Empty    #
-# subdirs are not created.                                #
+# The IPTC data block is instead analysed in detail, and  #
+# all findings are stored in another (sub)directory tree. #
+# Empty subdirectories are not created.                   #
 #=========================================================#
 # Ref: "Adobe Photoshop 6.0: File Formats Specifications",#
 #      Adobe System Inc., ver.6.0, rel.2, November 2000.  #
@@ -1353,25 +1353,21 @@ sub parse_resource_data_block {
 		     "in IPTC resource data block");
     # calculate the absolute end of the resource data block
     my $boundary = $offset + $data_length;
-    # currently, the IPTC block deserves as special treatment
-    my $is_IPTC = $identifier eq $APP13_PHOTOSHOP_IPTC;
-    # create the appropriate subdirectory reference
-    my $dir = $this->provide_subdirectory
-	($is_IPTC ? $APP13_IPTC_DIRNAME : $APP13_PHOTOSHOP_DIRNAME);
-    # if it is an IPTC block, repeatedly read data from the data block,
-    # till an amount of data equal to $data_length has been read; this
-    # routine, as usual, returns the new working offset at the end.
-    # The IPTC records are written in a separate subdirectory (but reset
-    # $dir to the root directory, the block name will be saved there)
-    if ($is_IPTC) { $offset = $this->parse_IPTC_dataset($offset, $dir)
-			while ($offset < $boundary); $dir = $this->{records}; }
-    # less interesting tags are mistreated. However, they should
-    # not pollute the root directory (use the $dir subdirectory)
-    else { $this->store_record($dir,$identifier,$UNDEF,$offset,$data_length); }
-    # if $name is non-trivial, i.e. not the empty string, it (should)
-    # correspond to the resource block description; in any case, it
-    # needs to be remembered (store it in the "extra" field).
-    $this->search_record('LAST_RECORD', $dir)->{extra} = $name if $name ne '';
+    # Currently, the IPTC block deserves a special treatment: repeatedly
+    # read data from the data block, up to an amount equal to $data_length.
+    # The IPTC-parsing routine, as usual, returns the new working offset at
+    # the end. The IPTC records are written in separate subdirectories. There
+    # should be no resource block description for IPTC, make it an error.
+    if ($identifier eq $APP13_PHOTOSHOP_IPTC) {
+	$this->die("Non-empty IPTC resource block descriptor") if $name ne '';
+	$offset=$this->parse_IPTC_dataset($offset) while ($offset<$boundary); }
+    # Less interesting tags are mistreated. However, they should not pollute
+    # the root directory, so the $dir subdirectory is used. If $name is
+    # non-trivial, i.e. not the empty string, it corresponds to the resource
+    # block description: store it in the "extra" field for use at dump time.
+    else { my $dir = $this->provide_subdirectory($APP13_PHOTOSHOP_DIRNAME);
+	   $this->store_record($dir,$identifier,$UNDEF,$offset,$data_length);
+	   $this->search_record('LAST_RECORD',$dir)->{extra} = $name if $name;}
     # pad, if you need padding ...
     ++$offset if $need_padding;
     # that's it, return the working offset
@@ -1380,7 +1376,8 @@ sub parse_resource_data_block {
 
 ###########################################################
 # This method parses one dataset from an APP13 IPTC block #
-# and creates a corresponding record in the $dirref subdir#
+# and creates a corresponding record in the appropriate   #
+# subdirectory (which depends on the IPTC record number). #
 # The $offset argument is a pointer in the segment data   #
 # area, which must be returned updated at the end of the  #
 # routine. An IPTC record is a sequence of datasets,      #
@@ -1391,7 +1388,7 @@ sub parse_resource_data_block {
 # tag is used. The structure of a dataset is:             #
 #---------------------------------------------------------#
 #  1 byte   tag marker (must be 0x1c)                     #
-#  1 byte   record number (always 2 for 2:xx datasets)    #
+#  1 byte   record number (e.g., 2 for 2:xx datasets)     #
 #  1 byte   dataset number                                #
 #  2 bytes  data length (< 32768 octets) or length of ... #
 #  <....>   data length (> 32767 bytes only)              #
@@ -1408,22 +1405,26 @@ sub parse_resource_data_block {
 # standard; therefore, we are likely not to have the IPTC #
 # record not spanning more than one APP13 segment.        #
 #=========================================================#
-# The record types defined by the IPTC-NAA standard are:  #
+# The record types defined by the IPTC-NAA standard and   #
+# the corresponding dataset ranges are:                   #
 #                                                         #
-# Object Envelop Record:    datasets in the range of 1:xx #
+# Object Envelop Record:                       1:xx       #
 # Application Records:                  2:xx through 6:xx #
 # Pre-ObjectData Descriptor Record:            7:xx       #
 # ObjectData Record:                           8:xx       #
 # Post-ObjectData Descriptor Record:           9:xx       #
 #                                                         #
-# The "pseudo"-standard by Adobe for APP13 IPTC data is   #
-# restricted to the first application record (2:xx). (?)  #
+# The Adobe "pseudo"-standard is usually restricted to    #
+# the first application record, so it is unlikely, but    #
+# not impossible, to find datasets outside of 2:xx.       #
+# Record numbers should only be found in increasing       #
+# order, but this rule is currently not enforced here.    #
 #=========================================================#
 # Ref: "IPTC-NAA: Information Interchange Model Version 4"#
 #      Comité Internat. des Télécommunications de Presse. #
 ###########################################################
 sub parse_IPTC_dataset {
-    my ($this, $offset, $dirref) = @_;
+    my ($this, $offset) = @_;
     # check that there is enough data for the dataset header
     $this->test_size($offset + 5, "in IPTC dataset");
     # each record is a sequence of variable length data sets read the
@@ -1435,17 +1436,17 @@ sub parse_IPTC_dataset {
     # check that the tag marker is 0x1c as specified by the IPTC standard
     $this->die("Invalid IPTC tag marker ($marker)") 
 	if $marker ne $APP13_IPTC_TAGMARKER;
-    # check that the record number is 2 (for 2:xx datasets).
-    # I think that this is the only relevant record for photos.
-    $this->die("IPTC record != 2 ($rnumber) found") if $rnumber != 2;
+    # retrieve or create the correct subdirectory; this depends on
+    # the record number (most often, it is 2, for 2:xx datasets)
+    my $dir = $this->provide_subdirectory("${APP13_IPTC_DIRNAME}_$rnumber");
     # if $length has the msb set, then we are dealing with an
-    # extended dataset. In this case, abort and debug
+    # extended dataset. In this case, abort and write more code
     $this->die("IPTC extended datasets not yet supported")
 	if $length & (0x01 << 15);
     # push a new record reference in the correct subdir. Use the
     # dataset number as identifier, the rest is strightforward
     # (assume that the data type is always ASCII).
-    $this->store_record($dirref, $dataset, $ASCII, $offset, $length);
+    $this->store_record($dir, $dataset, $ASCII, $offset, $length);
     # return the update offset
     return $offset;
 }

@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 
@@ -54,7 +54,7 @@ note that the thumbnail of a JPEG image can be uncompressed. The support
 level codes stand for: M (mandatory), R (recommended), O (optional), N
 (not_recorded) and J (included in JPEG marker and so not recorded).
 
-The 'thumbnail-only' column contains has a 'T' for records which cannot be
+The 'thumbnail-only' column shows a 'T' for those records which cannot be
 set/changed by the user exception made during a thumbnail update action
 (and some of them are calculated automatically anyway). Note that, in some
 cases, it is possible to set a tag when its support level is 'N' (e.g., the
@@ -67,38 +67,98 @@ notes, or by a 'T' in the thumbnail-only column.
      Hexadecimal code                count   IFD0 IFD1 thumbnail-only
   class |  Tag name                 type |   supp.supp.| notes
   |     |  |                           | |   |    |    | |
-  A   100  ImageWidth                  I 1   MMMJ MMMJ T (not JPEG) num columns
-  A   101  ImageLength                 I 1   MMMJ MMMJ T (not JPEG) num rows
+  A   100  ImageWidth                  I 1   MMMJ MMMJ T (not JPEG) pixels/row
+  A   101  ImageLength                 I 1   MMMJ MMMJ T (not JPEG) num. rows
   A   102  BitsPerSample               S 3   MMMJ MMMJ T (not JPEG) 8,8,8
   A   103  Compression                 S 1   MMMJ MMMM T 1(uncompr.) or 6(JPEG)
-  A   106  PhotometricInterpretation   S 1   MMMN MMMJ   2 (RGB) or 6 (YCbCr)
-  D   10e  ImageDescription            A -   RRRR OOOO   pure ASCII
-  D   10f  Make                        A -   RRRR OOOO   camera maker
+  A   106  PhotometricInterpretation   S 1   MMMN MMMJ   2(RGB) or 6(YCbCr)
+  D   10e  ImageDescription            A -   RRRR OOOO   (see note 1)
+  D   10f  Make                        A -   RRRR OOOO   camera manufacturer
   D   110  Model                       A -   RRRR OOOO   camera model
   B   111  StripOffsets                I -   MMMN MMMN   calculated
-  A   112  Orientation                 S 1   RRRR OOOO   1-8
+  A   112  Orientation                 S 1   RRRR OOOO   (see note 2)
   A   115  SamplesPerPixel             S 1   MMMJ MMMJ T (not JPEG) 3 compon.
   B   116  RowsPerStrip                I 1   MMMN MMMN T (not JPEG)
   B   117  StripByteCounts             I -   MMMN MMMN T (not JPEG)
-  A   11a  XResolution                 R 1   MMMM MMMM   [72 default]
-  A   11b  YResolution                 R 1   MMMM MMMM   [72 default]
-  A   11c  PlanarConfiguration         S 1   OMOJ OMOJ   1 or 2
-  A   128  ResolutionUnit              S 1   MMMM MMMM   2 or 3
-  C   12d  TransferFunction            S 768 RRRR OOOO   .
-  D   131  Software                    A -   OOOO OOOO   .
-  D   132  DateTime                    A 20  RRRR OOOO   YYYY:MM:DD HH:MM:SS
-  D   13b  Artist                      A -   OOOO OOOO   .
-  C   13e  WhitePoint                  R 2   OOOO OOOO   .
-  C   13f  PrimaryChromaticities       R 6   OOOO OOOO   .
+  A   11a  XResolution                 R 1   MMMM MMMM   (see note 3)
+  A   11b  YResolution                 R 1   MMMM MMMM   (see note 3)
+  A   11c  PlanarConfiguration         S 1   OMOJ OMOJ   (see note 4)
+  A   128  ResolutionUnit              S 1   MMMM MMMM   (see note 3)
+  C   12d  TransferFunction            S 768 RRRR OOOO   (see note 5)
+  D   131  Software                    A -   OOOO OOOO   Exif software/firmware
+  D   132  DateTime                    A 20  RRRR OOOO   (see note 6)
+  D   13b  Artist                      A -   OOOO OOOO   owner/photogr./creator
+  C   13e  WhitePoint                  R 2   OOOO OOOO   (see note 5)
+  C   13f  PrimaryChromaticities       R 6   OOOO OOOO   (see note 5)
   B   201  JPEGInterchangeFormat       L 1   NNNN NNNM   calculated
   B   202  JPEGInterchangeFormatLength L 1   NNNN NNNM T (only JPEG)
-  C   211  YCbCrCoefficients           R 3   NNOO NNOO   see the sYCC standard
-  A   212  YCbCrSubSampling            S 2   NNMJ NNMJ   [2,1] or [2,2]
-  A   213  YCbCrPositioning            S 1   NNMM NNOO   1 or 2
-  C   214  ReferenceBlackWhite         R 6   OOOO OOOO   .
-  D  8298  Copyright                   A -   OOOO OOOO   one or two copyrights
+  C   211  YCbCrCoefficients           R 3   NNOO NNOO   (see note 7)
+  A   212  YCbCrSubSampling            S 2   NNMJ NNMJ   (see note 7)
+  A   213  YCbCrPositioning            S 1   NNMM NNOO   (see note 7)
+  C   214  ReferenceBlackWhite         R 6   OOOO OOOO   (see note 8)
+  D  8298  Copyright                   A -   OOOO OOOO   of photogr./editor
   P  8769  ExifOffset                  L 1   MMMM OOOO   calculated
   P  8825  GPSInfo                     L 1   OOOO OOOO   calculated
+
+  Notes:
+
+  1) The image description is a string containing a title or a comment for
+     the image and all characters must be one byte long. When a two-byte
+     code is necessary, the Exif Private tag 'UserComment' is to be used
+     (see L</Exif tags for the 0th IFD Exif private subdirectory>).
+  2) The image orientation is defined with respect to first row and the
+     first column, according to the following table (values not listed here
+     are reserved and should not be used); the default value is 1.
+          ------------------------       ------------------------
+          val. 0th row  0th column       val. 0th row  0th column
+          ----|--------|----------       ----|--------|----------
+           1    top      left             5    left     top
+           2    top      right            6    right    top
+           3    bottom   right            7    right    bottom
+           4    bottom   left             8    left     bottom
+          ------------------------       ------------------------
+  3) The 'XResolution' and 'YResolution' tags indicate the number of pixels
+     per resolution unit (given by the 'ResolutionUnit' tag) along the
+     image width or height respectively. The resolution unit can be only 2
+     (inches) or 3 (centimetres), all other values being reserved. When
+     the resolution is not set, a value of 72 dots/inch is assumed.
+  4) This indicates whether pixel components are recorded in chunky (1,
+     default) or planar (2) format (only for TIFF images; JPEG compressed
+     files use a JPEG marker instead); all other values are reserved.
+  5) 'TransferFunction', 'WhitePoint' and 'PrimaryChromaticities' specify,
+     respectively, a transfer function for the image in tabular style
+     (3*256 short integers), the chromaticity of the white point, and the
+     chromaticity of the three primary colours of the image. Normally these
+     tags are not necessary, since the colour space is specified in the
+     'ColorSpace' L<private Exif tag|/Exif tags for the 0th IFD Exif
+     private subdirectory>.
+  6) This tag indicates the time of the "image creation" (i.e., the time
+     the file was last changed). The tag value is a null terminated string
+     of the form "YYYY:MM:DD HH:MM:SS" (note the space in the middle and
+     the colon signs), in 24-hour format. If the tag is set, but the value
+     is not meaningful, all numbers should be set to spaces (replacing also
+     the colons with spaces is permitted too). See also 'DateTimeOriginal'
+     and 'DateTimeDigitized' in the SubIFD L<section|/Exif tags for the 0th
+     IFD Exif private subdirectory>. [Currently, only years after 1800 can
+     be set with this Perl module].
+  7) Digital images are often displayed on RGB devices, but recorded data
+     can be saved in a YCbCr colour space because of the JPEG
+     compression. The Exif standard provides three tags for translating one
+     space into the other (see the sYCC IEC standard for more details).
+     'YCbCrSubSampling' is the sampling ratio of the chrominance components
+     in relation to the luminance component; its value can be only [2, 1]
+     (for YCbCr 4:2:2) or [2, 2] (for YCbCr 4:2:0). In JPEG compressed data
+     a JPEG marker is used instead of this tag. 'YCbCrPositioning' is the
+     position of the chrominance components in relation to the luminance
+     component, and is meaningful only for JPEG compressed data or
+     uncompressed YCbCr data; its value can be only 1 (centred, default) or
+     2 (co-sited). 'YCbCrCoefficients' contains the matrix coefficients for
+     the transformation from RGB to YCbCr image data.
+  8) This tags contains the reference values for the black and white points
+     of the image. No defaults are given in the TIFF standard, but Exif
+     assumes the following values: [0, 255, 0, 255, 0, 255] (when
+     'PhotometricInterpretation' is RGB) or [0, 255, 0, 128, 0, 128] (when
+     'PhotometricInterpretation' is YCbCr).
 
 =head2 Additional TIFF 6.0 tags not in Exif 2.2 for IFD0
 
@@ -298,40 +358,40 @@ automatically, more reliably).
   class |  Tag name                 type | support|
   |     |  |                           | |   |    |
   g  829a  ExposureTime                R 1   RRRR in seconds
-  g  829d  FNumber                     R 1   OOOO see note 1)
+  g  829d  FNumber                     R 1   OOOO (see note 1)
   g  8822  ExposureProgram             S 1   OOOO valid values are 0-8
   g  8824  SpectralSensitivity         A -   OOOO see ASTM technical committee
   g  8827  ISOSpeedRatings             S -   OOOO see ISO 12232
   g  8828  OECF                        U -   OOOO see ISO 14524
-  a  9000  ExifVersion                 U 4   MMMM see note 2)
-  f  9003  DateTimeOriginal            A 20  OOOO see note 3)
-  f  9004  DateTimeDigitized           A 20  OOOO see note 3)
-  c  9101  ComponentsConfiguration     U 4   NNNM see note 4)
+  a  9000  ExifVersion                 U 4   MMMM (see note 2)
+  f  9003  DateTimeOriginal            A 20  OOOO (see note 3)
+  f  9004  DateTimeDigitized           A 20  OOOO (see note 3)
+  c  9101  ComponentsConfiguration     U 4   NNNM (see note 4)
   c  9102  CompressedBitsPerPixel      R 1   NNNO compression rate
-  g  9201  ShutterSpeedValue          SR 1   OOOO see note 1)
-  g  9202  ApertureValue               R 1   OOOO see note 1)
-  g  9203  BrightnessValue            SR 1   OOOO see note 1)
-  g  9204  ExposureBiasValue          SR 1   OOOO see note 1)
+  g  9201  ShutterSpeedValue          SR 1   OOOO (see note 1)
+  g  9202  ApertureValue               R 1   OOOO (see note 1)
+  g  9203  BrightnessValue            SR 1   OOOO (see note 1)
+  g  9204  ExposureBiasValue          SR 1   OOOO (see note 1)
   g  9205  MaxApertureValue            R 1   OOOO smallest ApertureValue
   g  9206  SubjectDistance             R 1   OOOO in meters
   g  9207  MeteringMode                S 1   OOOO valid values are 0-6 and 255
   g  9208  LightSource                 S 1   OOOO use 0-4,9-15,17-24 or 255
-  g  9209  Flash                       S 1   RRRR see note 5)
+  g  9209  Flash                       S 1   RRRR (see note 5)
   g  920a  FocalLength                 R 1   OOOO in millimetres
-  g  9214  SubjectArea                 S -   OOOO see note 6)
+  g  9214  SubjectArea                 S -   OOOO (see note 6)
   d  927c  MakerNote                   U -   OOOO calculated
-  d  9286  UserComment                 U -   OOOO see note 7)
-  f  9290  SubSecTime                  A -   OOOO see note 8)
-  f  9291  SubSecTimeOriginal          A -   OOOO see note 8)
-  f  9292  SubSecTimeDigitized         A -   OOOO see note 8)
-  a  a000  FlashpixVersion             U 4   MMMM see note 2)
+  d  9286  UserComment                 U -   OOOO (see note 7)
+  f  9290  SubSecTime                  A -   OOOO (see note 8)
+  f  9291  SubSecTimeOriginal          A -   OOOO (see note 8)
+  f  9292  SubSecTimeDigitized         A -   OOOO (see note 8)
+  a  a000  FlashpixVersion             U 4   MMMM (see note 2)
   b  a001  ColorSpace                  S 1   MMMM valid values are 1 and 65535
   c  a002  PixelXDimension             I 1   NNNM picture X-dim, see note 9)
   c  a003  PixelYDimension             I 1   NNNM picture Y-dim, see note 9)
-  e  a004  RelatedSoundFile            A 13  OOOO see note 10)
+  e  a004  RelatedSoundFile            A 13  OOOO (see note 10)
   h  a005  InteroperabilityOffset      L 1   NNNO calculated by the module
   g  a20b  FlashEnergy                 R 1   OOOO in BCPS
-  g  a20c  SpatialFrequencyResponse    U -   OOOO see ISO 12233
+  g  a20c  SpatialFrequencyResponse    U -   OOOO (see ISO 12233
   g  a20e  FocalPlaneXResolution       R 1   OOOO .
   g  a20f  FocalPlaneYResolution       R 1   OOOO .
   g  a210  FocalPlaneResolutionUnit    S 1   OOOO valid values are 2 and 3
@@ -340,7 +400,7 @@ automatically, more reliably).
   g  a217  SensingMethod               S 1   OOOO valid values are 1-5,7 and 8
   g  a300  FileSource                  U 1   OOOO only allowed value is 3
   g  a301  SceneType                   U 1   OOOO only allowed value is 1
-  g  a302  CFAPattern                  U -   OOOO see note 11)
+  g  a302  CFAPattern                  U -   OOOO (see note 11)
   g  a401  CustomRendered              S 1   OOOO valid values are 0 and 1
   g  a402  ExposureMode                S 1   RRRR valid values are 0,1 and 2
   g  a403  WhiteBalance                S 1   RRRR valid values are 0 and 1
@@ -351,7 +411,7 @@ automatically, more reliably).
   g  a408  Contrast                    S 1   OOOO valid values are 0,1 and 2
   g  a409  Saturation                  S 1   OOOO valid values are 0,1 and 2
   g  a40a  Sharpness                   S 1   OOOO valid values are 0,1 and 2
-  g  a40b  DeviceSettingDescription    U -   OOOO see note 12)
+  g  a40b  DeviceSettingDescription    U -   OOOO (see note 12)
   g  a40c  SubjectDistanceRange        S 1   OOOO valid values are 0,1,2 and 3
   h  a420  ImageUniqueID               A 33  OOOO matches /[0-9a-fA-F]+\000+/
 
@@ -371,21 +431,25 @@ automatically, more reliably).
      the supported version of the standard (e.g., '0220' for version 2.2).
      Possible versions for Exif: 1.0, 1.1, 2.0, 2.1, 2.2 and 2.2.1.
      Possible versions for Flashpix: 1.0.
-  3) A date-time tag value is a null terminated string of the form
-     "YYYY:MM:DD HH:MM:SS" (note the space in the middle and the colon
-     signs). If the tag is set, but the value is not meaningful, all
-     numbers are set to spaces (replacing also the colons with spaces
-     is permitted too).
+  3) These tags indicate the time of the original-image data generation and
+     of its storage (hardly any difference, usually). Their value is a
+     null terminated string of the form "YYYY:MM:DD HH:MM:SS" (note the
+     space in the middle and the colon signs), in 24-hour format. If the
+     tag is set, but the value is not meaningful, all numbers should be set
+     to spaces (replacing also the colons with spaces is permitted
+     too). See also 'DateTime' in the canonical tag L<section|/Canonical
+     Exif 2.2 and TIFF 6.0 tags for IFD0 and IFD1>. [Currently, only years
+     after 1800 can be set with this Perl module].
   4) This tag indicates the channels of each component, arranged in order
      from the 1st component to the 4th. For uncompressed data the data
-     arrangement is given in the PhotometricInterpretation tag. The four
+     arrangement is given in the 'PhotometricInterpretation' tag. The four
      numeric characters must be in the range '0' - '6', and legal combina-
      tions are '4560' (if RGB uncompressed) and '1230' (all other cases).
   5) This tag indicates the status of flash when the image was shot.
      Bit 0 indicates the flash firing status, bits 1 and 2 indicate the
      flash return status, bits 3 and 4 indicate the flash mode, bit 5
      indicates whether the flash function is present, and bit 6 indicates
-     "red eye" mode. The allowed decimal values for the bitmask are
+     "red eye" mode. The allowed decimal values for the bit-mask are
      therefore 0, 1, 5, 7, 9, 13, 15, 16, 24, 25, 29, 31, 32, 65, 69,
      71, 73, 77, 79, 89, 93 and 95.
   6) This tag indicates the location and area of the main subject in the
@@ -397,7 +461,7 @@ automatically, more reliably).
      null bytes for "undefined". The ID code identifies the character
      code to be used in the following. A null terminator is not required.
   8) A sub-second-time tag value represents a fraction of a second, relative
-     to the DateTime tag and other such tags, as an ASCII null-terminated
+     to the 'DateTime' tag and other such tags, as an ASCII null-terminated
      string made of numeric characters; an arbitrary number of spaces can
      be appended to the numeric characters string. If sub-second data is not
      known the tag value may contain only spaces. The corresponding regular
@@ -428,23 +492,23 @@ treatment of raw camera pictures. The corresponding record values are all
 ASCII strings ($ASCII type), and contain the description of the tags
 themselves. The following might be an incomplete list:
 
-    Hexadecimal code      count
-       |  Tag name     type |   begins with:
-       |  |               | |   |
-    fde8  _OwnerName      A -   "Owner's Name: "  + null terminated string
-    fde9  _SerialNumber   A -   "Serial Number: " + null terminated string
-    fdea  _Lens           A -   "Lens: "          + null terminated string
-    fe4c  _RawFile        A -   "Raw File: "      + null terminated string
-    fe4d  _Converter      A -   "Converter: "     + null terminated string
-    fe4e  _WhiteBalance   A -   "White Balance: " + null terminated string
-    fe51  _Exposure       A -   "Exposure: "      + null terminated string
-    fe52  _Shadows        A -   "Shadows: "       + null terminated string
-    fe53  _Brightness     A -   "Brightness: "    + null terminated string
-    fe54  _Contrast       A -   "Contrast: "      + null terminated string
-    fe55  _Saturation     A -   "Saturation: "    + null terminated string
-    fe56  _Sharpness      A -   "Sharpness: "     + null terminated string
-    fe57  _Smoothness     A -   "Smoothness: "    + null terminated string
-    fe58  _MoireFilter    A -   "Moire Filter: "  + null terminated string
+    Hexadecimal code      count   value begins with (a null terminated
+       |  Tag name     type |     string is to be added at the end):
+       |  |               | |     |
+    fde8  _OwnerName      A -     "Owner's Name: " 
+    fde9  _SerialNumber   A -     "Serial Number: "
+    fdea  _Lens           A -     "Lens: "         
+    fe4c  _RawFile        A -     "Raw File: "     
+    fe4d  _Converter      A -     "Converter: "    
+    fe4e  _WhiteBalance   A -     "White Balance: "
+    fe51  _Exposure       A -     "Exposure: "     
+    fe52  _Shadows        A -     "Shadows: "      
+    fe53  _Brightness     A -     "Brightness: "   
+    fe54  _Contrast       A -     "Contrast: "     
+    fe55  _Saturation     A -     "Saturation: "   
+    fe56  _Sharpness      A -     "Sharpness: "    
+    fe57  _Smoothness     A -     "Smoothness: "   
+    fe58  _MoireFilter    A -     "Moire Filter: " 
 
 =head2 Exif tags for the 0th IFD Interoperability subdirectory
 
@@ -488,10 +552,10 @@ i.e. v.2.2, is automatically added by this module if necessary).
         |  Tag name                 type |   |
         |  |                           | |   |
        00  GPSVersionID                B 4   mandatory
-       01  GPSLatitudeRef              A 2   see note 1)
-       02  GPSLatitude                 R 3   see note 2)
-       03  GPSLongitudeRef             A 2   see note 1)
-       04  GPSLongitude                R 3   see note 2)
+       01  GPSLatitudeRef              A 2   (see note 1)
+       02  GPSLatitude                 R 3   (see note 2)
+       03  GPSLongitudeRef             A 2   (see note 1)
+       04  GPSLongitude                R 3   (see note 2)
        05  GPSAltitudeRef              B 1   0 (sea level) or 1 (absolute)
        06  GPSAltitude                 R 1   in metres
        07  GPSTimeStamp                R 3   hours, minutes and seconds
@@ -499,24 +563,24 @@ i.e. v.2.2, is automatically added by this module if necessary).
        09  GPSStatus                   A 2   'A' (in progr.) or 'V' (interop.)
        0a  GPSMeasureMode              A 2   '2' (2-dim) or '3' (3-dim)
        0b  GPSDOP                      R 1   data degree of precision
-       0c  GPSSpeedRef                 A 2   see note 3)
+       0c  GPSSpeedRef                 A 2   (see note 3)
        0d  GPSSpeed                    R 1   speed of the GPS receiver
-       0e  GPSTrackRef                 A 2   see note 4)
-       0f  GPSTrack                    R 1   see note 5)
-       10  GPSImgDirectionRef          A 2   see note 4)
-       11  GPSImgDirection             R 1   see note 5)
+       0e  GPSTrackRef                 A 2   (see note 4)
+       0f  GPSTrack                    R 1   (see note 5)
+       10  GPSImgDirectionRef          A 2   (see note 4)
+       11  GPSImgDirection             R 1   (see note 5)
        12  GPSMapDatum                 A -   geodetic survey data
-       13  GPSDestLatitudeRef          A 2   see note 1)
-       14  GPSDestLatitude             R 3   see note 2)
-       15  GPSDestLongitudeRef         A 2   see note 1)
-       16  GPSDestLongitude            R 3   see note 2)
-       17  GPSDestBearingRef           A 2   see note 4)
-       18  GPSDestBearing              R 1   see note 5)
-       19  GPSDestDistanceRef          A 2   see note 3)
+       13  GPSDestLatitudeRef          A 2   (see note 1)
+       14  GPSDestLatitude             R 3   (see note 2)
+       15  GPSDestLongitudeRef         A 2   (see note 1)
+       16  GPSDestLongitude            R 3   (see note 2)
+       17  GPSDestBearingRef           A 2   (see note 4)
+       18  GPSDestBearing              R 1   (see note 5)
+       19  GPSDestDistanceRef          A 2   (see note 3)
        1a  GPSDestDistance             R 1   distance to the destination point
-       1b  GPSProcessingMethod         U -   see note 6), location finding
-       1c  GPSAreaInformation          U -   see note 6), name of the GPS area
-       1d  GPSDateStamp                A 11  YYYY:MM:DD
+       1b  GPSProcessingMethod         U -   location finding (see note 6)
+       1c  GPSAreaInformation          U -   name of the GPS area (see note 6)
+       1d  GPSDateStamp                A 11  (see note 7)
        1e  GPSDifferential             S 1   0 (without) or 1 (with) diff.corr.
 
   Notes:
@@ -548,14 +612,21 @@ i.e. v.2.2, is automatically added by this module if necessary).
      'UserComment' tag in the SubIFD, so 'A' means ASCII, 'J' means JIS,
      'U' means Unicode and a null character means undefined. Since the type
      is not ASCII, null termination is not required.
+  7) A date tag value is a null terminated string of the form "YYYY:MM:DD"
+     (note the colon signs). [I currently allow only years after 1800].
 
+YYYY:MM:DD
 =head1 Valid tags for Photoshop-style APP13 data
 
 The structure of a Photoshop-style APP13 segment is introduced in section
 L<Image::MetaData::JPEG::Structures/Structure of a Photoshop-style APP13
-segment>. This section contains only the list of valid Image Resource ID's;
-note that not all file formats use all ID's, and some information may be
-stored somewhere else in the file. In the following list 'PS' stands for
+segment>. 
+
+=head2 Non-IPTC data (visual rendering - Photoshop variables)
+
+This section contains only the list of valid Image Resource ID's; note that
+not all file formats use all ID's, and some information may be stored
+somewhere else in the file. In the following list 'PS' stands for
 Photoshop, and 'Pstring' for Pascal string:
 
      Hexadecimal code                 notes
@@ -617,15 +688,19 @@ Photoshop, and 'Pstring' for Pascal string:
       bb7  ClippingPathName           see additional Adobe info
      2710  PrintFlagsInfo             see additional Adobe info
 
-=head2 Valid tags for IPTC data
+=head2 IPTC data (Editorial information and envelope record)
 
 The structure of an IPTC stream is introduced in section
 L<Image::MetaData::JPEG::Structures/Structure of an IPTC data block>. This
-section contains only the list of valid editorial IPTC tags (2:xx,
-application records). Numeric tag values (record keys), in the first
-column, are in decimal notation, and they are followed by tag names in the
-second column. The presence of 'N' in the third column means that the
-record is non-repeatable (i.e., there should not be two such records in the
+section contains only the list of valid IPTC tags. Since the use of APP13
+for IPTC information in a JPEG picture is not a real standard, it is not
+clear which subset of IPTC should be considered valid; my current guess is
+that only editorial IPTC datasets (2:xx) and, more rarely, some envelope
+datasets (1:xx, which are however needed for non ASCII character sets) are
+found. Numeric tag values (record keys), in the first column, are in
+decimal notation, and they are followed by tag names in the second
+column. The presence of 'N' in the third column means that the record is
+non-repeatable (i.e., there should not be two such records in the
 file). The following number or range in square brackets indicates valid
 lengths for the record data field. The final comment specifies additional
 format constraints, sometimes in natural language: "/regex/" means that the
@@ -638,51 +713,71 @@ C-strings).
  Decimal code                          size     notes
     |  Tag name             repeatable |        |
     |  |                             | |        |
+  -------------------------------------------------------------------------
+  1:xx datasets from the envelope record (seldom used)
+  -------------------------------------------------------------------------
+    0  ModelVersion                  N [  2,  ] binary, always 4 in JPEGs?
+    5  Destination                     [1-1024] word (see note 1)
+   20  FileFormat                    N [  2   ] invalid, binary
+   22  FileFormatVersion             N [  2   ] invalid, binary (see 1:20)
+   30  ServiceIdentifier             N [ <=10 ] word (see note 1)
+   40  EnvelopeNumber                N [  8   ] invalid, /\d{8}/
+   50  ProductID                       [ <=32 ] word (see note 1)
+   60  EnvelopePriority              N [  1   ] invalid, /[1-9]/
+   70  DataSent                      N [  8   ] invalid, date (see note 2)
+   80  TimeSent                      N [ 11   ] invalid, time (see note 3)
+   90  CodedCharacterSet             N [ <=32 ] character set (see note 4)
+  100  UNO                           N [14-80 ] invalid (eternal identifier)
+  120  ARMIdentifier                 N [  2   ] invalid, binary
+  122  ARMVersion                    N [  2   ] invalid, binary
+  -------------------------------------------------------------------------
+  2:xx datasets from the application record (editorial tags)
+  -------------------------------------------------------------------------
     0  RecordVersion                 N [  2   ] binary, always 2 in JPEGs ?
     3  ObjectTypeReference           N [ 3-67 ] /\d{2}?:[\w\s]{0,64}?/
     4  ObjectAttributeReference        [ 4-68 ] /\d{3}?:[\w\s]{0,64}?/
-    5  ObjectName                    N [ <=64 ] line (see note 1)
-    7  EditStatus                    N [ <=64 ] line (see note 1)
+    5  ObjectName                    N [ <=64 ] line (see note 5)
+    7  EditStatus                    N [ <=64 ] line (see note 5)
     8  EditorialUpdate               N [  2   ] /01/
    10  Urgency                       N [  1   ] /[1-8]/
-   12  SubjectReference                [13-236] complicated, see note 5
+   12  SubjectReference                [13-236] complicated, see note 7
    15  Category                      N [ <=3  ] /[a-zA-Z]{1,3}?/
-   20  SupplementalCategory            [ <=32 ] line (see note 1)
-   22  FixtureIdentifier             N [ <=32 ] line without spaces
-   25  Keywords                        [ <=64 ] line (see note 1)
+   20  SupplementalCategory            [ <=32 ] line (see note 5)
+   22  FixtureIdentifier             N [ <=32 ] word (see note 1)
+   25  Keywords                        [ <=64 ] line (see note 5)
    26  ContentLocationCode             [  3   ] /[A-Z]{3}/
-   27  ContentLocationName             [ <=64 ] line (see note 1)
+   27  ContentLocationName             [ <=64 ] line (see note 5)
    30  ReleaseDate                   N [  8   ] date (see note 2)
    35  ReleaseTime                   N [ 11   ] time (see note 3)
    37  ExpirationDate                N [  8   ] date (see note 2)
    38  ExpirationTime                N [ 11   ] time (see note 3)
-   40  SpecialInstructions           N [ <=256] line (see note 1)
+   40  SpecialInstructions           N [ <=256] line (see note 5)
    42  ActionAdvised                 N [  2   ] /0[1-4]/
-   45  ReferenceService                [ 10   ] "invalid" like 1:30
-   47  ReferenceDate                   [  8   ] "invalid" like 1:70
-   50  ReferenceNumber                 [  8   ] "invalid" like 1:40
+   45  ReferenceService                [ 10   ] invalid (see 1:30)
+   47  ReferenceDate                   [  8   ] invalid (see 1:70)
+   50  ReferenceNumber                 [  8   ] invalid (see 1:40)
    55  DateCreated                   N [  8   ] date (see note 2)
    60  TimeCreated                   N [ 11   ] time (see note 3)
    62  DigitalCreationDate           N [  8   ] date (see note 2)
    63  DigitalCreationTime           N [ 11   ] time (see note 3)
-   65  OriginatingProgram            N [ 32   ] line (see note 1)
-   70  ProgramVersion                N [ <=10 ] line (see note 1)
+   65  OriginatingProgram            N [ 32   ] line (see note 5)
+   70  ProgramVersion                N [ <=10 ] line (see note 5)
    75  ObjectCycle                   N [  1   ] /a|p|b/
-   80  ByLine                          [ <=32 ] line (see note 1)
-   85  ByLineTitle                     [ <=32 ] line (see note 1)
-   90  City                          N [ <=32 ] line (see note 1)
-   92  SubLocation                   N [ <=32 ] line (see note 1)
-   95  Province/State                N [ <=32 ] line (see note 1)
+   80  ByLine                          [ <=32 ] line (see note 5)
+   85  ByLineTitle                     [ <=32 ] line (see note 5)
+   90  City                          N [ <=32 ] line (see note 5)
+   92  SubLocation                   N [ <=32 ] line (see note 5)
+   95  Province/State                N [ <=32 ] line (see note 5)
   100  Country/PrimaryLocationCode   N [  3   ] /[A-Z]{3}?/
-  101  Country/PrimaryLocationName   N [ <=64 ] line (see note 1)
-  103  OriginalTransmissionReference N [ <=32 ] line (see note 1)
-  105  Headline                      N [ <=256] line (see note 1)
-  110  Credit                        N [ <=32 ] line (see note 1)
-  115  Source                        N [ <=32 ] line (see note 1)
-  116  CopyrightNotice               N [ <=128] line (see note 1)
-  118  Contact                         [ <=128] line (see note 1)
+  101  Country/PrimaryLocationName   N [ <=64 ] line (see note 5)
+  103  OriginalTransmissionReference N [ <=32 ] line (see note 5)
+  105  Headline                      N [ <=256] line (see note 5)
+  110  Credit                        N [ <=32 ] line (see note 5)
+  115  Source                        N [ <=32 ] line (see note 5)
+  116  CopyrightNotice               N [ <=128] line (see note 5)
+  118  Contact                         [ <=128] line (see note 5)
   120  Caption/Abstract              N [<=2000] line with CR and LF 
-  122  Writer/Editor                   [ <=32 ] line (see note 1)
+  122  Writer/Editor                   [ <=32 ] line (see note 5)
   125  RasterizedCaption             N [ 7360 ] binary data (460x128 PBM)
   130  ImageType                     N [  2   ] /[0-49][WYMCKRGBTFLPS]/
   131  ImageOrientation              N [  1   ] /P|L|S/
@@ -690,26 +785,44 @@ C-strings).
   150  AudioType                     N [  2   ] /[012][ACMQRSTVW]/
   151  AudioSamplingRate             N [  6   ] /\d{6}?/
   152  AudioSamplingResolution       N [  2   ] /\d{2}?/
-  153  AudioDuration                 N [  6   ] duration (see note 4)
-  154  AudioOutcue                   N [ <=64 ] line (see note 1)
-  200  ObjDataPreviewFileFormat      N [  2   ] "invalid" like 1:20, binary
-  201  ObjDataPreviewFileFormatVer   N [  2   ] "invalid" like 1:22, binary
-  202  ObjDataPreviewData            N [<=256000B] "invalid", binary
+  153  AudioDuration                 N [  6   ] duration (see note 6)
+  154  AudioOutcue                   N [ <=64 ] line (see note 5)
+  200  ObjDataPreviewFileFormat      N [  2   ] invalid, binary (see 1:20)
+  201  ObjDataPreviewFileFormatVer   N [  2   ] invalid, binary (see 1:22)
+  202  ObjDataPreviewData            N [<=256000] invalid, binary
 
   Notes:
-  1) A "line" is made of printable characters from the ASCII table, i.e. all
-     codes from "space" on, excluding the "delete" character. As a regular
-     expression, this corresponds to /^[^\000-\037\177]*$/.
-  2) A date is stored, following the ISO 8601 standard, as the eight character
-     string 'CCYYMMDD', ex. '19890317' indicates March 17th 1989. As a regular
-     expression, this corresponds to /[0-2]\d\d\d(0\d|1[0-2])([0-2]\d|3[01])/.
-  3) A time is stored, following the ISO 8601 standard, as the eleven character
-     string 'HHMMSS+/-HHMM', ex. '090000-0500' indicates 9AM, 5 hours behind
-     the coordinated universal time. As a regular expression, this corresponds
-     to /([01]\d|2[0-3])[0-5]\d[0-5]\d[\+-]([01]\d|2[0-3])[0-5]\d/.
-  4) A "duration" is stored like a "time", but there is no time zone spec;
+  1) A "word" is made of elements of what the IPTC standard calls "graphic
+     characters" set, i.e. all characters that have visual representation.
+     Control codes, the space character and the DEL character are NOT
+     graphic characters. Note that the visual representation of a graphic
+     character depends upon the character set invoked at the time of
+     evaluation. A "word" is matched by the following regular expression:
+     /^[^\000-\040\177]*$/.
+  2) A date is stored, in conformity to the ISO 8601 standard, as the eight
+     character string 'CCYYMMDD', e.g., '19890317' indicates March 17th
+     1989. A date string is matched by the following regular expression:
+     /\d{4}(0\d|1[0-2])([0-2]\d|3[01])/. [Currently, I allow only years
+     after 1800; but 'DateCreated' has no limitation since it refers to the
+     creation date of the photographed object, not to the creation of the
+     photo itself].
+  3) A time is stored, in conformity to the ISO 8601 standard, as the
+     eleven character string 'HHMMSS+/-HHMM', e.g., '090000-0500' indicates
+     9AM, 5 hours behind the coordinated universal time. A time string is
+     matched by the following regular expression:
+     /([01]\d|2[0-3])[0-5]\d[0-5]\d[\+-]([01]\d|2[0-3])[0-5]\d/.
+  4) This dataset selects a character set, for use in character oriented
+     datasets in records 2-6, according to the "International Register of
+     Coded Character Sets" (ISO/IEC 2022 and ISO/IEC 2375, see for instance
+     L<http://www.itscj.ipsj.or.jp/ISO-IR/>), and typically consist of the
+     escape control character followed by one or more graphic characters.
+     For instance, "\033/A" refers to ISO-8859-1 (latin-1) and "\033%G" refers
+     to UTF-8 (a Unicode encoding).
+  5) A "line" is made of graphic characters (see note 1) and space. This is
+     matched by the following regular expression: /^[^\000-\037\177]*$/.
+  6) A "duration" is stored like a "time", but there is no time zone spec;
      this means that the string is only six characters wide (see also note 3).
-  5) The complicated regular expression for the SubjectReference is the
+  7) The complicated regular expression for the SubjectReference is the
      following: /[$validchar]{1,32}?:[01]\d{7}?(:[$validchar\s]{0,64}?){3}?/,
      where $validchar is '\040-\051\053-\071\073-\076\100-\176'.
 
@@ -719,7 +832,7 @@ Stefano Bettelli, B<bettelli@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2004,2005 by Stefano Bettelli
+Copyright (C) 2004,2005,2006 by Stefano Bettelli
 
 This library is free software; you can redistribute it and/or modify it
 under the terms of the GNU L<General Public License|perlgpl>. See the

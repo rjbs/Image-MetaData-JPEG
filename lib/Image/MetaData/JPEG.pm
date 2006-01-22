@@ -1,6 +1,6 @@
 ###########################################################
 # A Perl package for showing/modifying JPEG (meta)data.   #
-# Copyright (C) 2004,2005 Stefano Bettelli                #
+# Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 #use 5.008;
@@ -12,7 +12,7 @@ no  integer;
 use strict;
 use warnings;
 
-our $VERSION = '0.141';
+our $VERSION = '0.15';
 
 ###########################################################
 # These simple methods should be used instead of standard #
@@ -569,16 +569,15 @@ sub find_new_app_segment_position {
     my $list = sub { $this->get_segments('^'.$_[0].'$', 'INDEXES') };
     # if there are already some 'COM' segments, let us put the new COM
     # segment immediately after them; otherwise try after all APP segments
-    if ($name =~ 'COM') {
+    if ($name =~ /^COM/) {
 	return &$safe(1+$_) for reverse &$list('COM');
 	return &$safe(1+$_) for reverse &$list('APP.*'); }
     # if $name is APPx, try after the last element of the list of APPy's
     # (with y = x .. 0, in sequence); if all these fail, try before the
     # first element of the list of APPy's (with y = x+1..15, in sequence)
-    if ($name =~ 'APP') {
-	my $x = substr($name, 3);
-	for (reverse 0..$x) {return &$safe(1+$_) for reverse &$list("APP$_");};
-	for (1+$x..15) { return &$safe($_) for &$list("APP$_"); }; }
+    if ($name =~ /^APP(.*)$/) {
+	for (reverse 0..$1) {return &$safe(1+$_) for reverse &$list("APP$_");};
+	for (1+$1..15) { return &$safe($_) for &$list("APP$_"); }; }
     # if all specific tests failed, try with the
     # first DHP segment or the first SOF segment
     return &$safe($_) for &$list('DHP');
