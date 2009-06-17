@@ -1,10 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables qw(:Lookups);
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
 my ($image, $image2, $seg, $hash, $hash2, $d1, $d2, $dt, $ref);
@@ -22,7 +17,7 @@ my $IMAGE_data = {
     &$val('ReferenceBlackWhite')      => [7, 32, 5, 64, 18, 13, 0,0,0,0,0,0],
     &$val('PrimaryChromaticities')    => [(10..21)],
     &$val('Copyright')                => 'GPL',
-    'Software'                        => $cname,
+    'Software'                        => 'Image::MetaData::JPEG software',
     'DateTime'                        => ['1996:07:12 14:36:55'],
     'WhitePoint'                      => [12, 16, 8, 16],
     &$val('WhiteBalance')             => [1],
@@ -114,15 +109,18 @@ diag "Testing APP1 Exif data routines (IMAGE_DATA & ROOT_DATA)";
 plan tests => 52;
 #=======================================
 
+BEGIN { use_ok ($::tabname, qw(:Lookups)) or exit; }
+BEGIN { use_ok ($::pkgname) or exit; } # this must be loaded second!
+
 ######################### Redefine Segment's update() to check # of calls
 { no warnings; no strict; $d1 = 0;
-  local *{"${cname}::Segment::update"} = sub { ++$d1; };
-  $image = $cname->new($tphoto, '^APP1$');
+  local *{"${pkgname}::Segment::update"} = sub { ++$d1; };
+  $image = newimage($tphoto, '^APP1$');
   $image->set_Exif_data($IMAGE_data, 'IMAGE_DATA', 'ADD');
   is( $d1, 1, "update() called only once with IMAGE_DATA" ); }
 
 #########################
-$image = $cname->new($tphoto, '^APP1$');
+$image = newimage($tphoto, '^APP1$');
 $hash = $image->set_Exif_data($IMAGE_data, 'IMAGE_DATA', 'ADD');
 is_deeply( $hash, {}, "all test IMAGE records ADDed" );
 
@@ -183,9 +181,9 @@ $hash = $image->set_Exif_data($IMAGE_data, 'IMAGE_DATA', 'ADD');
 is_deeply( $hash, {}, "adding without the Exif segment" );
 
 #########################
-$ref = \ "dummy";
+$ref = \ (my $buffer = "");
 $image->save($ref);
-$image2 = $cname->new($ref, '^APP1$');
+$image2 = newimage($ref, '^APP1$');
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################
@@ -265,10 +263,10 @@ like( $d1, qr/Endianness[^\n]*'II'/, "... tag read with get_description" );
 #########################
 $hash = $image->set_Exif_data({'Endianness' => 'II'}, 'ROOT_DATA', 'ADD');
 $image->save($ref);
-$d1 = $cname->new($ref, '^APP1$', 'FASTREADONLY')->get_description();
+$d1 = newimage($ref, '^APP1$', 'FASTREADONLY')->get_description();
 $hash = $image->set_Exif_data({'Endianness' => 'MM'}, 'ROOT_DATA', 'ADD');
 $image->save($ref);
-$d2 = $cname->new($ref, '^APP1$', 'FASTREADONLY')->get_description();
+$d2 = newimage($ref, '^APP1$', 'FASTREADONLY')->get_description();
 $d1 =~ s/(.*REFERENCE.*-->).*/$1/g; $d1 =~ s/Original .*//g;
 $d2 =~ s/(.*REFERENCE.*-->).*/$1/g; $d2 =~ s/Original .*//g;
 like( $d1, qr/Endianness[^\n]*'II'/, "Little-endianness correctly saved" );

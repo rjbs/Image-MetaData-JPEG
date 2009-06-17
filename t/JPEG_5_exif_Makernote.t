@@ -1,10 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables qw(:Lookups);
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $cphoto = 't/test_photo_copy.jpg';
 my $ref    = '\[REFERENCE\].*-->.*$';
 my ($image, $image2, $warning, $error, $fname, $hash,
@@ -37,10 +32,14 @@ diag "Testing APP1 MakerNote parse / dump";
 plan tests => 44;
 #=======================================
 
+BEGIN { use_ok ($::tabname, qw(:Lookups)) or exit; }
+BEGIN { use_ok ($::pkgname) or exit; } # this must be loaded second!
+
+###########################
 for $fname (keys %table) {
 
     #########################
-    trap_errors('$image = $cname->new("t/mknt_$fname")');
+    trap_errors('$image = newimage("t/mknt_$fname")');
     ok( $image, "($fname)" );
     
     #########################
@@ -78,7 +77,7 @@ for $fname (keys %table) {
     is( $error, undef, " |  no errors while saving" );
 
     #########################
-    trap_errors('$image2 = $cname->new($cphoto)');
+    trap_errors('$image2 = newimage($cphoto)');
     @desc1 = map { s/$ref//; $_ } split /\n/, $image->get_description();
     @desc2 = map { s/$ref//; $_ } split /\n/, $image2->get_description();
     is( @desc1, @desc2, " `- description OK after saving" );

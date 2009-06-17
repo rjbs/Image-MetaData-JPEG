@@ -5,14 +5,14 @@
 ###########################################################
 #use 5.008;
 package Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables qw(:JPEGgrammar);
+use Image::MetaData::JPEG::data::Tables qw(:JPEGgrammar);
 use Image::MetaData::JPEG::Backtrace;
 use Image::MetaData::JPEG::Segment;
 no  integer;
 use strict;
 use warnings;
 
-our $VERSION = '0.15';
+our $VERSION = '0.152';
 
 ###########################################################
 # These simple methods should be used instead of standard #
@@ -593,10 +593,10 @@ sub find_new_app_segment_position {
 # that this file becomes too large, only general interest #
 # methods are written here.                               #
 ###########################################################
-require 'Image/MetaData/JPEG/JPEG_various.pl';
-require 'Image/MetaData/JPEG/JPEG_comments.pl';
-require 'Image/MetaData/JPEG/JPEG_app1_exif.pl';
-require 'Image/MetaData/JPEG/JPEG_app13.pl';
+require 'Image/MetaData/JPEG/access/various.pl';
+require 'Image/MetaData/JPEG/access/comments.pl';
+require 'Image/MetaData/JPEG/access/app1_exif.pl';
+require 'Image/MetaData/JPEG/access/app13.pl';
 
 # successful package load
 1;

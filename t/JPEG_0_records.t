@@ -1,6 +1,4 @@
-use Test::More;
-use strict;
-use warnings;
+BEGIN { require 't/test_setup.pl'; }
 
 my ($record, $data, $result, $mykey, $key, $type,
     $count, $dataref, @v, @w, $problem);
@@ -27,10 +25,8 @@ diag "Testing [Image::MetaData::JPEG::Record]";
 plan tests => 150;
 #=======================================
 
-BEGIN { $::pkgname = 'Image::MetaData::JPEG';
-	$::cname   = "${main::pkgname}::Record";
-	use_ok $::cname; }
-BEGIN { use_ok "${main::pkgname}::Tables", qw(:RecordTypes :Endianness); }
+BEGIN { use_ok ($::tabname, qw(:RecordTypes :Endianness)) or exit; }
+BEGIN { use_ok ($::recname) or exit; } # this must be loaded second!
 
 #########################
 my $native = $NATIVE_ENDIANNESS;
@@ -40,17 +36,17 @@ isnt( $native, undef, "Endianness detected: $native" );
 #########################
 $data  = "an average string"; 
 $mykey = 'Test';
-$record = $::cname->new($mykey, $ASCII, \$data, length $data);
+$record = newrecord($mykey, $ASCII, \$data, length $data);
 ok( $record, "ASCII ctor" );
 
 #########################
-isa_ok( $record, $::cname );
+isa_ok( $record, $::recname );
 
 #########################
-ok($::cname->new(0x3456, $ASCII, \$data, length $data), "with numeric tag" );
+ok(newrecord(0x3456, $ASCII, \$data, length $data), "with numeric tag" );
 
 #########################
-$record = $::cname->new($mykey, $ASCII, \$data, length $data);
+$record = newrecord($mykey, $ASCII, \$data, length $data);
 $result = $record->get_value();
 is( $data, $result, "rereading ASCII data" );
 
@@ -64,13 +60,13 @@ is_deeply( [$mykey, $type, $dataref], [$key, $ASCII, \$data],
 	   "... test of get (list)" );
 
 #########################
-$record = $::cname->new($mykey, $UNDEF, \$data, length $data);
+$record = newrecord($mykey, $UNDEF, \$data, length $data);
 $result = $record->get_value();
 is( $data, $result, "rereading UNDEF variables" );
 
 #########################
 $data = \ $mykey;
-$record = $::cname->new($mykey, $REFERENCE, \$data);
+$record = newrecord($mykey, $REFERENCE, \$data);
 $result = $record->get_value();
 is( $data, $result, "rereading REFERENCE variables" );
 
@@ -83,7 +79,7 @@ is( $$data, $mykey, "... its value is correct" );
 #########################
 @v = ( 7, 9, 3, 10 );
 $data = pack "CC", map { 16*$v[$_] + $v[1+$_] } (0,2);
-$record = $::cname->new($mykey, $NIBBLES, \$data, 2);
+$record = newrecord($mykey, $NIBBLES, \$data, 2);
 is( $record->get_value(), vsum(@v), "rereading nibbles");
 is( $record->get_value($_), $v[$_], "... ".$messages[$_] ) for (0..$#v);
 
@@ -94,7 +90,7 @@ is( $result, $data, "... as binary data" );
 #########################
 @v = ( 92, 191, 49 );
 $data = pack "C" x @v, @v;
-$record = $::cname->new($mykey, $BYTE, \$data, scalar @v);
+$record = newrecord($mykey, $BYTE, \$data, scalar @v);
 is( $record->get_value(), vsum(@v), "rereading unsigned chars");
 
 #########################
@@ -104,7 +100,7 @@ is( $result, $data, "... as binary data (content)" );
 
 #########################
 @v = map { ($_ >= 2**7) ? ($_ - 2**8) : $_ } @v;
-$record = $::cname->new($mykey, $SBYTE, \$data, scalar @v);
+$record = newrecord($mykey, $SBYTE, \$data, scalar @v);
 $result = $record->get_value();
 is( $record->get_value(), vsum(@v), "rereading signed chars" );
 
@@ -116,7 +112,7 @@ is( $result, $data, "... as binary data (content)" );
 #########################
 @v = ( 134, 42000, 32191 );
 $data = pack "n" x @v, @v;
-$record = $::cname->new($mykey, $SHORT, \$data, scalar @v);
+$record = newrecord($mykey, $SHORT, \$data, scalar @v);
 is( $record->get_value(), vsum(@v), "rereading unsigned shorts" );
 
 #########################
@@ -126,7 +122,7 @@ is( $result, $data, "... as binary data" );
 #########################
 @v = ( 34304, 4260, 49021 );
 $data = pack "v" x @v, @v;
-$record = $::cname->new($mykey, $SHORT, \$data, scalar @v, $LITTLE_ENDIAN);
+$record = newrecord($mykey, $SHORT, \$data, scalar @v, $LITTLE_ENDIAN);
 is( $record->get_value(), vsum(@v), "... using little endian" );
 
 #########################
@@ -134,14 +130,14 @@ $result = $record->get($LITTLE_ENDIAN);
 is( $result, $data, "... repacking as little endian" );
 
 #########################
-$record = $::cname->new($mykey, $SHORT, \$data, scalar @v, $BIG_ENDIAN);
+$record = newrecord($mykey, $SHORT, \$data, scalar @v, $BIG_ENDIAN);
 $result = $record->get($LITTLE_ENDIAN);
 is( $result, (pack "vvv",unpack "nnn",$data), "... little endian paranoia" );
 
 #########################
 $data = pack "n" x @v, @v;                        # repack trick ...
 @v = map { ($_ >= 2**15) ? ($_ - 2**16) : $_ } @v; # ... continued
-$record = $::cname->new($mykey, $SSHORT, \$data, scalar @v);
+$record = newrecord($mykey, $SSHORT, \$data, scalar @v);
 is( $record->get_value(), vsum(@v), "rereading signed shorts" );
 
 #########################
@@ -151,7 +147,7 @@ is( $result, $data, "... as binary data" );
 #########################
 $data = pack "v" x @v, @v;                        # repack trick ...
 @v = map { ($_ >= 2**15) ? ($_ - 2**16) : $_ } @v; # ... continued
-$record = $::cname->new($mykey, $SSHORT, \$data, scalar @v, $LITTLE_ENDIAN);
+$record = newrecord($mykey, $SSHORT, \$data, scalar @v, $LITTLE_ENDIAN);
 is( $record->get_value(), vsum(@v), "... using little endian" );
 
 #########################
@@ -165,7 +161,7 @@ is( $result, (pack "vvv", unpack "nnn", $data), "... big endian paranoia" );
 #########################
 @v = (2720118940, 3778117118, 407087547, 3339718614);
 $data = pack "N" x @v, @v;
-$record = $::cname->new($mykey, $LONG, \$data, scalar @v);
+$record = newrecord($mykey, $LONG, \$data, scalar @v);
 is( $record->get_value(), vsum(@v), "rereading unsigned longs" );
 is( $record->get_value($_), $v[$_], "... ".$messages[$_] ) for (0..$#v);
 
@@ -175,14 +171,14 @@ is( $result, $data, "... as binary data" );
 
 #########################
 @w = map { unpack "V", (pack "N",$_) } @v;
-$record = $::cname->new($mykey, $LONG, \$data, scalar @w, $LITTLE_ENDIAN);
+$record = newrecord($mykey, $LONG, \$data, scalar @w, $LITTLE_ENDIAN);
 $result = $record->get_value();
 is( $record->get_value(), vsum(@w), "... using little endian" );
 is( $record->get_value($_), $w[$_], "... ".$messages[$_] ) for (0..$#w);
 
 #########################
 @v = map { ($_ >= 2**31) ? $_ -= 2**32 : $_ } @v;
-$record = $::cname->new($mykey, $SLONG, \$data, scalar @v);
+$record = newrecord($mykey, $SLONG, \$data, scalar @v);
 is( $record->get_value(), vsum(@v), "rereading signed longs" );
 
 #########################
@@ -191,7 +187,7 @@ is( $result, $data, "... as binary data" );
 
 #########################
 @w = map { unpack "V", (pack "N",$_) } @v;
-$record = $::cname->new($mykey, $LONG, \$data, scalar @w, $LITTLE_ENDIAN);
+$record = newrecord($mykey, $LONG, \$data, scalar @w, $LITTLE_ENDIAN);
 is( $record->get_value(), vsum(@w), "... using little endian" );
 
 #########################
@@ -205,7 +201,7 @@ is( $result, (pack "VVVV", unpack "NNNN", $data), "... big endian paranoia" );
 #########################
 @v = (2720118940, 3778117118, 407087547, 3339718614);
 $data = pack "N" x @v, @v;
-$record = $::cname->new($mykey, $RATIONAL, \$data, @v/2);
+$record = newrecord($mykey, $RATIONAL, \$data, @v/2);
 is( $record->get_value(), vsum(@v), "rereading unsigned rationals" );
 
 #########################
@@ -215,7 +211,7 @@ is( $result, $data, "... as binary data" );
 #########################
 @w = map { ($_ >= 2**31) ? ($_ - 2**32) : $_ }
      map { unpack "V", (pack "N",$_) } @v;
-$record = $::cname->new($mykey, $SRATIONAL, \$data, @w/2, $LITTLE_ENDIAN);
+$record = newrecord($mykey, $SRATIONAL, \$data, @w/2, $LITTLE_ENDIAN);
 is( $record->get_value(), vsum(@w), "... with little endian and sign" );
 
 #########################
@@ -225,23 +221,23 @@ is( $result, $data, "... as binary data" );
 #########################
 @v = ( 2**31, 3791912960 );
 $data = pack "V" x @v, @v;
-$record = $::cname->new($mykey, $RATIONAL, \$data, @v/2, $LITTLE_ENDIAN);
+$record = newrecord($mykey, $RATIONAL, \$data, @v/2, $LITTLE_ENDIAN);
 ($result = $record->get_description([])) =~ s/.*RATIONAL\](.*)/$1/;
 unlike( $result, qr/-/, "No negative sign in unsigned rational" );
 
 #########################
-$record = $::cname->new($mykey, $SRATIONAL, \$data, @v/2, $LITTLE_ENDIAN);
+$record = newrecord($mykey, $SRATIONAL, \$data, @v/2, $LITTLE_ENDIAN);
 ($result = $record->get_description([])) =~ s/.*RATIONAL\](.*)/$1/;
 like( $result, qr/-/, "Negative sign in signed rational" );
 
 #########################
-eval { $::cname->new($mykey, $SRATIONAL, \$data, 1 + @v/2) };
+eval { newrecord($mykey, $SRATIONAL, \$data, 1 + @v/2) };
 ok( $@, "Fail OK: " . &$trim($@) );
 
 #########################
 @v = (17.385601);
 $data = pack_float($v[0]);
-$record = $::cname->new($mykey, $FLOAT, $data, 1, $native);
+$record = newrecord($mykey, $FLOAT, $data, 1, $native);
 ok( test_float($record, $v[0]), "Positive float (native order)" );
 
 #########################
@@ -251,7 +247,7 @@ is( $result, $$data, "... as binary data" );
 #########################
 @v = (-55.173856);
 $data = pack_float($v[0]);
-$record = $::cname->new($mykey, $FLOAT, $data, 1, $native);
+$record = newrecord($mykey, $FLOAT, $data, 1, $native);
 ok( test_float($record, $v[0]), "Negative float (native order)" );
 
 #########################
@@ -261,7 +257,7 @@ is( $result, $$data, "... as binary data" );
 #########################
 @v = (70.1317386);
 $data = pack_float($v[0], 1);
-$record = $::cname->new($mykey, $FLOAT, $data, 1, $not_native);
+$record = newrecord($mykey, $FLOAT, $data, 1, $not_native);
 ok( test_float($record, $v[0]), "Positive float (reversed order)" );
 
 #########################
@@ -271,7 +267,7 @@ is( $result, $$data, "... as binary data" );
 #########################
 @v = (-75.555174);
 $data = pack_float($v[0], 1);
-$record = $::cname->new($mykey, $FLOAT, $data, 1, $not_native);
+$record = newrecord($mykey, $FLOAT, $data, 1, $not_native);
 ok( test_float($record, $v[0]), "Negative float (reversed order)" );
 
 #########################
@@ -281,7 +277,7 @@ is( $result, $$data, "... as binary data" );
 #########################
 @v = ( -18945.63, 16.354, -0.000001345, 1E+4 );
 $data = join '', map { ${pack_float($_)} } @v;
-$record = $::cname->new($mykey, $FLOAT, \ $data, scalar @v, $native);
+$record = newrecord($mykey, $FLOAT, \ $data, scalar @v, $native);
 ok( test_float($record, vsum(@v)), "rereading floats (native order)" );
 ok( test_float($_, $record, $v[$_]), "... ".$messages[$_] ) for (0..$#v);
 
@@ -291,7 +287,7 @@ is( $result, $data, "... as binary data" );
 
 #########################
 $data = join '', map { ${pack_float($_, 1)} } @v;
-$record = $::cname->new($mykey, $FLOAT, \ $data, scalar @v, $not_native);
+$record = newrecord($mykey, $FLOAT, \ $data, scalar @v, $not_native);
 ok( test_float($record, vsum(@v)), "rereading floats (reversed order)" );
 ok( test_float($_, $record, $v[$_]), "... ".$messages[$_] ) for (0..$#v);
 
@@ -301,7 +297,7 @@ is( $result, $data, "... as binary data" );
 
 #########################
 $data = join '', map { ${pack_float($_)} } @v;
-$record = $::cname->new($mykey, $FLOAT, \ $data, scalar @v, $native);
+$record = newrecord($mykey, $FLOAT, \ $data, scalar @v, $native);
 $data = join '', map { ${pack_float($_, 1)} } @v;
 $result = $record->get($not_native);
 is( $result, $data, "Exchanging endianness" );
@@ -311,7 +307,7 @@ is( $result, $data, "Exchanging endianness" );
        '(2-2**(-23))*2**127', '-2**(-127)', '-2**(-149)' );
 @v = map { eval } @w;
 $data = join '', map { ${pack_float($_, 1)} } @v;
-$record = $::cname->new($mykey, $FLOAT, \ $data, scalar @v, $not_native);
+$record = newrecord($mykey, $FLOAT, \ $data, scalar @v, $not_native);
 ok( test_float($_, $record, $v[$_]), "(float) accepting $w[$_]" ) for (0..$#v);
 
 #########################
@@ -320,7 +316,7 @@ is( $result, $data, "(float) all tested as binary data" );
 
 #########################
 $data = join '', pack 'C*', map { hex } '7FC000007F800000FF800000' =~ /../g;
-$record = $::cname->new($mykey, $FLOAT, \$data, scalar @notnums, $BIG_ENDIAN);
+$record = newrecord($mykey, $FLOAT, \$data, scalar @notnums, $BIG_ENDIAN);
 like( $record->get_value($_), $notnums[$_],
       "(float) " . $notnames[$_] . " OK" ) for (0..$#notnums);
 
@@ -331,7 +327,7 @@ is( $result, $data, "(float) ... also as binary data" );
 #########################
 @v = (17.38560104370137);
 $data = pack_double($v[0]);
-$record = $::cname->new($mykey, $DOUBLE, $data, 1, $native);
+$record = newrecord($mykey, $DOUBLE, $data, 1, $native);
 ok( test_double($record, $v[0]), "Positive double (native order)" );
 
 #########################
@@ -341,7 +337,7 @@ is( $result, $$data, "... as binary data" );
 #########################
 @v = (-55.17385601043755);
 $data = pack_double($v[0]);
-$record = $::cname->new($mykey, $DOUBLE, $data, 1, $native);
+$record = newrecord($mykey, $DOUBLE, $data, 1, $native);
 ok( test_double($record, $v[0]), "Negative double (native order)" );
 
 #########################
@@ -351,7 +347,7 @@ is( $result, $$data, "... as binary data" );
 #########################
 @v = (70.13173856010437013);
 $data = pack_double($v[0], 1);
-$record = $::cname->new($mykey, $DOUBLE, $data, 1, $not_native);
+$record = newrecord($mykey, $DOUBLE, $data, 1, $not_native);
 ok( test_double($record, $v[0]), "Positive double (reversed order)" );
 
 #########################
@@ -361,7 +357,7 @@ is( $result, $$data, "... as binary data" );
 #########################
 @v = (-75.55517385601043755);
 $data = pack_double($v[0], 1);
-$record = $::cname->new($mykey, $DOUBLE, $data, 1, $not_native);
+$record = newrecord($mykey, $DOUBLE, $data, 1, $not_native);
 ok( test_double($record, $v[0]), "Negative double (reversed order)" );
 
 #########################
@@ -372,7 +368,7 @@ is( $result, $$data, "... as binary data" );
 @v = ( -189456325.134323, 16.3542345235432,
        -0.0000013452345234534, 1.5435363456356E+4 );
 $data = join '', map { ${pack_double($_)} } @v;
-$record = $::cname->new($mykey, $DOUBLE, \ $data, scalar @v, $native);
+$record = newrecord($mykey, $DOUBLE, \ $data, scalar @v, $native);
 ok( test_double($record, vsum(@v)), "rereading doubles (native order)" );
 ok( test_double($_, $record, $v[$_]), "... ".$messages[$_] ) for (0..$#v);
 
@@ -382,7 +378,7 @@ is( $result, $data, "... as binary data" );
 
 #########################
 $data = join '', map { ${pack_double($_, 1)} } @v;
-$record = $::cname->new($mykey, $DOUBLE, \ $data, scalar @v, $not_native);
+$record = newrecord($mykey, $DOUBLE, \ $data, scalar @v, $not_native);
 ok( test_double($record, vsum(@v)), "rereading doubles (reversed order)" );
 ok( test_double($_, $record, $v[$_]), "... ".$messages[$_] ) for (0..$#v);
 
@@ -392,7 +388,7 @@ is( $result, $data, "... as binary data" );
 
 #########################
 $data = join '', map { ${pack_double($_)} } @v;
-$record = $::cname->new($mykey, $DOUBLE, \ $data, scalar @v, $native);
+$record = newrecord($mykey, $DOUBLE, \ $data, scalar @v, $native);
 $data = join '', map { ${pack_double($_, 1)} } @v;
 $result = $record->get($not_native);
 is( $result, $data, "Exchanging endianness" );
@@ -402,7 +398,7 @@ is( $result, $data, "Exchanging endianness" );
        '(2-2**(-52))*2**1023', '-2**(-1023)', '-2**(-1074)' );
 @v = map { eval } @w;
 $data = join '', map { ${pack_double($_, 1)} } @v;
-$record = $::cname->new($mykey, $DOUBLE, \ $data, scalar @v, $not_native);
+$record = newrecord($mykey, $DOUBLE, \ $data, scalar @v, $not_native);
 ok( test_double($_,$record, $v[$_]),"(double) accepting $w[$_]" ) for (0..$#v);
 
 #########################
@@ -412,7 +408,7 @@ is( $result, $data, "(double) all tested as binary data" );
 #########################
 my $zz = '0' x 12;
 $data = join '', pack 'C*', map { hex } "7FF8${zz}7FF0${zz}FFF0${zz}" =~ /../g;
-$record = $::cname->new($mykey, $DOUBLE, \$data, scalar @notnums, $BIG_ENDIAN);
+$record = newrecord($mykey, $DOUBLE, \$data, scalar @notnums, $BIG_ENDIAN);
 like( $record->get_value($_), $notnums[$_],
       "(double) " . $notnames[$_] . " OK" ) for (0..$#notnums);
 
@@ -421,15 +417,15 @@ $result = $record->get($BIG_ENDIAN);
 is( $result, $data, "(double) ... also as binary data" );
 
 #########################
-eval { $::cname->new($mykey, $UNDEF, \$data, 199) };
+eval { newrecord($mykey, $UNDEF, \$data, 199) };
 ok( $@, "Fail OK: " . &$trim($@) );
 
 #########################
-$record = $::cname->new($mykey, $UNDEF, \$data, length $data);
+$record = newrecord($mykey, $UNDEF, \$data, length $data);
 is( $data, scalar $record->get(), "Variable-length size specified" );
 
 #########################
-$record = $::cname->new($mykey, $UNDEF, \$data);
+$record = newrecord($mykey, $UNDEF, \$data);
 is( $data, scalar $record->get(), "Variable-length size unspecified" );
 
 #########################
@@ -458,70 +454,70 @@ ok( $problem, "Generation of errors cannot be inhibited: " . &$trim($problem));
 
 #########################
 { local $SIG{'__DIE__'} = sub { $problem = shift; };
-  $problem = undef; eval{$::cname->get_size(65535, 4294967295)}; }
+  $problem = undef; eval{$::recname->get_size(65535, 4294967295)}; }
 ok( $problem, "Error report from \"static\" method: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new($mykey, $LONG, \ "xxxxx", 1)');
+trap_error('newrecord($mykey, $LONG, \ "xxxxx", 1)');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new($mykey, $UNDEF, \ "xxxxx", 7)');
+trap_error('newrecord($mykey, $UNDEF, \ "xxxxx", 7)');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new($mykey, 99, \ "xxxxx", 5)');
+trap_error('newrecord($mykey, 99, \ "xxxxx", 5)');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new($mykey, $LONG, \ "", 0)');
+trap_error('newrecord($mykey, $LONG, \ "", 0)');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->get_size()');
+trap_error('$::recname->get_size()');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->get_size(99)');
+trap_error('$::recname->get_size(99)');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
 $data = pack "S", 999;
-trap_error('$::cname->new($mykey, $SHORT, \ $data, 2)->get_value(2)');
+trap_error('newrecord($mykey, $SHORT, \ $data, 2)->get_value(2)');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new($mykey, $SHORT, \ $data, 2)->set_value(13, 2)');
+trap_error('newrecord($mykey, $SHORT, \ $data, 2)->set_value(13, 2)');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
 $data = pack "N", 999999;
-trap_error('$::cname->new($mykey, $LONG, \ $data, 1, "KK")');
+trap_error('newrecord($mykey, $LONG, \ $data, 1, "KK")');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new($mykey, $LONG, \ $data, 1)->get("KK")');
+trap_error('newrecord($mykey, $LONG, \ $data, 1)->get("KK")');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
 $data = pack "ff", 256.799, 134.24;
-trap_error('$::cname->new($mykey, $FLOAT, \ $data, 2, "KK")');
+trap_error('newrecord($mykey, $FLOAT, \ $data, 2, "KK")');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new($mykey, $FLOAT, \ $data, 2)->get("KK")');
+trap_error('newrecord($mykey, $FLOAT, \ $data, 2)->get("KK")');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new($mykey, $FLOAT, \ "x"x8, 2, "KK")');
+trap_error('newrecord($mykey, $FLOAT, \ "x"x8, 2, "KK")');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new($mykey, $ASCII, 25, 25)');
+trap_error('newrecord($mykey, $ASCII, 25, 25)');
 ok( $problem, "Error OK: " . &$trim($problem));
 
 #########################
-trap_error('$::cname->new(0x3456, $ASCII)');
+trap_error('newrecord(0x3456, $ASCII)');
 ok( $problem, "does not survive to undef data" );
 
 ### Local Variables: ***

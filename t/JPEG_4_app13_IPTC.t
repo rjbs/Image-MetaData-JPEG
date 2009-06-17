@@ -1,9 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my ($image, $hash, $bighash, $date);
 
@@ -12,8 +8,10 @@ diag "Testing APP13 IPTC format checker";
 plan tests => 33;
 #=======================================
 
+BEGIN { use_ok ($::pkgname) or exit; }
+
 #########################
-$image = $cname->new($tphoto);
+$image = newimage($tphoto);
 $hash = $image->set_app13_data({ 80 => "ciao" }); # ByLine
 is( scalar keys %$hash, 0, "regular tag" );
 

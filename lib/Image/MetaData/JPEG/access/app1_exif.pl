@@ -4,7 +4,7 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables qw(:Endianness :TagsAPP1);
+use Image::MetaData::JPEG::data::Tables qw(:Endianness :TagsAPP1_Exif);
 use Image::MetaData::JPEG::Segment;
 no  integer;
 use strict;
@@ -157,7 +157,7 @@ sub forge_interoperability_IFD {
 # The following routines best fit as Segment methods.     #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
-use Image::MetaData::JPEG::Tables qw(:Lookups);
+use Image::MetaData::JPEG::data::Tables qw(:Lookups);
 
 ###########################################################
 # A private hash for get_Exif_data and set_Exif_data.     #
@@ -468,7 +468,7 @@ sub set_Exif_thumbnail {
     # if $dataref points to an Image::MetaData::JPEG object, replace it
     # with a reference to its bare content and set $type to 'JPEG'.
     if ('Image::MetaData::JPEG' eq ref $dataref) {
-	my $r; $dataref->save(\ $r); $dataref = \ $r; $type = 'JPEG'; }
+	my $r = ""; $dataref->save(\ $r); $dataref = \ $r; $type = 'JPEG'; }
     # $dataref must now be a scalar reference; everything else is an error
     return { 'ERROR' => 'not a good reference' } if ref $dataref ne 'SCALAR';
     # try to recognise the content of $$dataref. If it is defined but empty,

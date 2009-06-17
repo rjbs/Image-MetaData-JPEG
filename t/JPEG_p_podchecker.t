@@ -1,6 +1,4 @@
-use Test::More;
-use strict;
-use warnings;
+BEGIN { require 't/test_setup.pl'; }
 
 my $root    = "lib/Image/MetaData";
 my $name    = "JPEG";

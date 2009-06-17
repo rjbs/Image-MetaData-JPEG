@@ -1,6 +1,4 @@
-use Test::More;
-use strict;
-use warnings;
+BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
@@ -8,62 +6,60 @@ my $cphoto = 't/test_photo_copy.jpg';
 my $ref    = '\[REFERENCE\].*-->.*$';
 my $trim = sub { join '\n', map { s/^.*\"(.*)\".*$/$1/; $_ }
 		 grep { /0:/ } split '\n', $_[0] };
-my $fake = sub { my $s = $::segname->new('COM',\ "Fake $_[0] segment");
+my $fake = sub { my $s = newsegment('COM',\ "Fake $_[0] segment");
 		 $s->{name} = $_[0]; return $s; };
-my ($lines, $image, $image_2, $error, $handle, $buffer, $bufferref,
-    @desc, @desc_2, $seg, $h1, $h2, $status, $num, $num2, @segs1, @segs2);
+my ($lines, $image, $image_2, $error, $handle, $buffer, $seg,
+    $status, @desc, @desc_2, $h1, $h2, $num, $num2, @segs1, @segs2);
 
 #=======================================
 diag "Testing [Image::MetaData::JPEG]";
 plan tests => 60;
 #=======================================
 
-#########################
-BEGIN { $::cname   = 'Image::MetaData::JPEG';  use_ok $::cname;   }
-BEGIN { $::segname = $::cname . '::Segment';   use_ok $::segname; }
+BEGIN { use_ok ($::pkgname) or exit; }
+BEGIN { use_ok ($::segname) or exit; }
 
 #########################
 ok( -s $tphoto, "Test photo exists" );
 
 #########################
-$image = $::cname->new("'Invalid'");
-ok( ! $image, 'Fail OK: ' . &$trim($::cname->Error()) );
+$image = newimage("'Invalid'");
+ok( ! $image, 'Fail OK: ' . &$trim($::pkgname->Error()) );
 
 #########################
-$image = $::cname->new(undef);
-ok( ! $image, 'Fail OK: ' . &$trim($::cname->Error()) );
+$image = newimage(undef);
+ok( ! $image, 'Fail OK: ' . &$trim($::pkgname->Error()) );
 
 #########################
-$image = $::cname->new(\ '');
-ok( ! $image, 'Fail OK: ' . &$trim($::cname->Error()) );
+$image = newimage(\ '');
+ok( ! $image, 'Fail OK: ' . &$trim($::pkgname->Error()) );
 
 #########################
-$image = $::cname->new($tphoto);
+$image = newimage($tphoto);
 ok( $image, "Plain constructor" );
 
 #########################
-isa_ok( $image, $::cname );
+isa_ok( $image, $::pkgname );
 
 #########################
 open($handle, "<", $tphoto); binmode($handle); # for Windows
 read($handle, $buffer, -s $tphoto); close($handle);
-$bufferref = \ $buffer;
-$image_2 = $::cname->new($bufferref);
+$image_2 = newimage(\ $buffer);
 ok( $image_2, "Constructor with reference" );
 
 #########################
 is_deeply( $image->{segments}, $image_2->{segments}, "Objects coincide" );
 
 #########################
-$error = $::cname->Error();
+$error = $::pkgname->Error();
 is( $error, undef, "Ctor error unset (default)" );
 
 #########################
-$image = $::cname->new($tphoto, "COM|SOF");
+$image = newimage($tphoto, "COM|SOF");
 ok( $image, "Restricted constructor" );
 
 #########################
-$image = $::cname->new($tphoto, "COM|SOF", "FASTREADONLY");
+$image = newimage($tphoto, "COM|SOF", "FASTREADONLY");
 ok( $image, "Fast constructor" );
 
 #########################
@@ -71,7 +67,7 @@ ok( -e $tdata, "Metadata file exists" );
 open(ZZ, $tdata); $lines = my @a = <ZZ>; close(ZZ);
 
 #########################
-$image = $::cname->new($tphoto);
+$image = newimage($tphoto);
 @desc  = map { s/$ref//; $_ } split /\n/, $image->get_description();
 is( @desc, $lines, "Description from file" );
 
@@ -82,7 +78,7 @@ is_deeply( \@desc, \@desc_2, "Detailed description check");
 #########################
 open($handle, "<", $tphoto); binmode($handle); # for Windows
 read($handle, $buffer, -s $tphoto); close($handle);
-$image_2 = $::cname->new($bufferref);
+$image_2 = newimage(\ $buffer);
 @desc_2 = map { s/$ref//; $_ } split /\n/, $image_2->get_description();
 is( @desc_2, $lines, "Description from reference" );
 
@@ -120,27 +116,27 @@ ok( $image->save($cphoto), "Exit status of save()" );
 unlink $cphoto;
 
 #########################
-ok( eval { $image->save($bufferref); }, "Image saved to memory" );
+ok( eval { $image->save(\ ($buffer = "")); }, "Image saved to memory" );
 
 #########################
-$image_2 = $::cname->new($bufferref);
-isa_ok( $image_2, $::cname );
+$image_2 = newimage(\ $buffer);
+isa_ok( $image_2, $::pkgname );
 
 #########################
 is_deeply( $image->{segments}, $image_2->{segments},
 	   "From-disk and in-memory compare equal" );
 
 #########################
-$image = $::cname->new($tphoto, 'COM');
-ok( $image->save($bufferref), "Exit status of save() (2)" );
+$image = newimage($tphoto, 'COM');
+ok( $image->save(\ ($buffer = "")), "Exit status of save() (2)" );
 
 #########################
 is_deeply( [$image->get_dimensions()], [0, 0],
 	   "No dimensions without SOF segment" );
 
 #########################
-$image = $::cname->new($tphoto, 'APP1$', "FASTREADONLY");
-ok( ! $image->save($bufferref), "Do not save incomplete files" );
+$image = newimage($tphoto, 'APP1$', "FASTREADONLY");
+ok( ! $image->save(\ ($buffer = "")), "Do not save incomplete files" );
 
 #########################
 is( $image->get_segments(), 1, "Number of APP1 segments");
@@ -150,7 +146,7 @@ is( $image->find_new_app_segment_position('APP1'), 0,
     "find_new_app_segment_position not fooled by only 1 segment" );
 
 #########################
-$image = $::cname->new($tphoto);
+$image = newimage($tphoto);
 $num  = scalar $image->get_segments();
 $num2 = scalar $image->get_segments('^(APP\d{1,2}|COM)$');
 $image->drop_segments('METADATA');
@@ -169,14 +165,14 @@ eval { $image->drop_segments('') };
 isnt( $@, '', "drop_segments' regex cannot be an empty string" );
 
 #########################
-$image = $::cname->new($tphoto);
+$image = newimage($tphoto);
 $num  = scalar $image->get_segments();
 $num2 = scalar $image->get_segments('^COM$');
 $image->drop_segments('COM');
 is( scalar $image->get_segments(), $num - $num2, "All comments erased" );
 
 #########################
-$image = $::cname->new($tphoto);
+$image = newimage($tphoto);
 $num  = scalar $image->get_segments();
 $num2 = scalar $image->get_segments('^APP\d{1,2}$');
 $image->drop_segments('APP\d{1,2}');
@@ -192,7 +188,7 @@ is( $@, '', "insert_segments without a segment does not fail" );
 is_deeply( \ @segs1, \ @segs2, "... but segments are not changed" );
 
 #########################
-$seg = $::segname->new('COM', \ 'dummy');
+$seg = newsegment('COM', \ 'dummy');
 eval { $image->insert_segments($seg, 0) };
 isnt( $@, '', "... pos=0 fails miserably" );
 

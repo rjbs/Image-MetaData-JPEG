@@ -1,10 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables;
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
 my ($image, $image2, $seg, $hash, $lat, $long, $track, $str, $d1, $d2, $ref);
@@ -46,8 +41,10 @@ diag "Testing APP1 Exif data routines (GPS_DATA)";
 plan tests => 47;
 #=======================================
 
+BEGIN { use_ok ($::pkgname) or exit; }
+
 #########################
-$image = $cname->new($tphoto, '^APP1$');
+$image = newimage($tphoto, '^APP1$');
 $seg   = $image->retrieve_app1_Exif_segment(0);
 isnt( $seg, undef, "The Exif segment is there, hi!" );
 
@@ -95,9 +92,9 @@ $hash = $image->set_Exif_data($GPS_data, 'GPS_DATA', 'ADD');
 is_deeply( $hash, {}, "adding without the GPS dir" );
 
 #########################
-$ref = \ "dummy";
+$ref = \ (my $buffer = "");
 $image->save($ref);
-$image2 = $cname->new($ref, '^APP1$');
+$image2 = newimage($ref, '^APP1$');
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################
@@ -108,7 +105,7 @@ $d2 =~ s/(.*REFERENCE.*-->).*/$1/g; $d2 =~ s/Original.*//g;
 is( $d1, $d2, "Descriptions after write/read cycle are coincident" );
 
 #########################
-$image = $cname->new($tphoto, '^APP1$', 'FASTREADONLY');
+$image = newimage($tphoto, '^APP1$', 'FASTREADONLY');
 $hash = $image->set_Exif_data({'GPSLatitudeRef' =>"W\000"}, 'GPS_DATA', 'ADD');
 ok( exists $$hash{1}, "Malformed LatitudeRef rejected" );
 

@@ -1,3 +1,182 @@
+2009-06-17  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG.pm: setting $VERSION to 0.152, and
+	posting to CPAN (this is mainly a bugfix version, being up-
+        loaded after three years due to lack of interest from users).
+	==========================================================
+        Most relevant changes from version 0.15 to 0.152:
+	(see the documentation in the .pod files for more details)
+	==========================================================
+        * eliminated all annoying errors in the test suite. 
+	* added t/test_setup.pl to the MANIFEST (sorry version 0.151)
+	* fixed bug #17835 (see rt.cpan.org)
+	* new documentation: 'Structure of an XMP APP1 segment'
+	* new documentation: 'XMP data ("APP1" segments)'
+	* new (very preliminary) subsystem for parsing XML data
+        * new possibilities for the APP13 signature ('8BPS', 'PHUT').
+          Parser, dumper, tables and documentation changed accordingly.
+	* general reorganisation of files in the project.
+
+2009-06-16  Stefano Bettelli  <bettelli@cpan.org>
+
+        * t/*.t: these tests were all failing due to some change
+        (that happened approximately two years ago) in the way
+        module symbols are imported by Test::More::use_ok. 
+        I have moved some input code into a common file named
+        t/test_setup.pl.
+
+2006-05-14  Stefano Bettelli  <bettelli@cpan.org>
+
+	* saved as version 0.15a and sent to Martin for comments.
+
+	* t/JPEG_4_app13.t: changed $APP13_PHOTOSHOP_DIRNAME into
+	$APP13_PHOTOSHOP_DIRNAME.'_8BIM'.
+
+	* lib/Image/MetaData/JPEG/access/app13.pl (sanitise_what): updated
+	list of allowed values for $what: 'IPTC', 'IPTC_2', 'IPTC_1',
+	'PHOTOSHOP', 'PS_8BIM', 'PS_8BPS' and 'PS_PHUT'.
+	(subdir_name): updated to return the new $what --> subdir corresp.:
+	'IPTC'      => $APP13_IPTC_DIRNAME . '_2'         # synonym
+	'IPTC_1'    => $APP13_IPTC_DIRNAME . '_1'	  
+	'IPTC_2'    => $APP13_IPTC_DIRNAME . '_2'	  
+	'PHOTOSHOP' => $APP13_PHOTOSHOP_DIRNAME . '_8BIM' # synonym
+	'PS_8BIM'   => $APP13_PHOTOSHOP_DIRNAME . '_8BIM' 
+	'PS_8BPS'   => $APP13_PHOTOSHOP_DIRNAME . '_8BPS' 
+	'PS_PHUT'   => $APP13_PHOTOSHOP_DIRNAME . '_PHUT'
+	(get_app13_data): updated, so that, if $what is "non-IPTC", the
+	"extra" values for each record are appended, according to the tag.
+	I.e., use "if ($what!~/IPTC/)" instead of "if ($what eq 'PHOTOSHOP')".
+	(set_app13_data): same thing, when testing for "non-IPTC"-ness.
+	(insert_accepted): same thing, when testing for "non-IPTC"-ness.
+	(value_is_OK): same thing, when testing for "non-IPTC"-ness.
+
+	* lib/Image/MetaData/JPEG.pod: section "Photoshop and IPTC data
+	- ("APP13" segments)" modified to introduce new $what values:
+	Recent versions of Photoshop (>= 4.0) use a resource data block
+	type equal to '8BIM', and this is the default in this module (so,
+	'PHOTOSHOP' and 'PS_8BIM' are synonyms). However, some other older
+	or undocumented resource data block types are also allowed. Currently
+	allowed valuse are: 'PS_8BIM'='PHOTOSHOP', 'PS_8BPS' and 'PS_PHUT'.
+	See also allowed $what values in section "How to inspect and modify
+	your Photoshop data".
+
+	* lib/Image/MetaData/JPEG/dumpers/app13.pl (dump_app13): update to
+	cope with the new structure of APP13 for non-IPTC (Photoshop) data.
+	Now, all non-IPTC subdirs, named "${APP13_PHOTOSHOP_DIRNAME}_${type}"
+	for $type in @$APP13_PHOTOSHOP_TYPE, are searched in sequence and
+	dumped via $this->dump_resource_data_block ($type is a new argument).
+	The dump sequence for IPTC data was also simplified a bit.
+	(dump_resource_data_block): the Photoshop resource data block
+	type (sometimes named OS_type) is no more fixed to '8BIM', but
+	is passed in the second argument. If it is missing, it defaults
+	to $$APP13_PHOTOSHOP_TYPE[0], that is '8BIM', as before.
+
+	* lib/Image/MetaData/JPEG/parsers/app1_xmp.pl (parse_rdf_description): 
+	some top-level rdf:Description's are there as placeholders (there
+	is only an empty CONTENT before the closing tag). In this case, 
+	the property-extraction stage must be skipped. The consequence is
+	that we will have a namespace entry under 'SCHEMAS' but no property
+	with that prefix under 'PROPERTIES'.
+
+2006-05-11  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/data/Tables.pm : updated to take into
+	account the new location of non-IPTC tags in an APP13 segment:
+        my $JPEG_RECORD_NAME =
+        {APP1  => {%$HASH_APP1_ROOT, .....
+	 APP13 => {$APP13_PHOTOSHOP_DIRNAME.'_8BIM' => $HASH_PHOTOSHOP_TAGS,
+	           $APP13_PHOTOSHOP_DIRNAME.'_8BPS' => $HASH_PHOTOSHOP_TAGS,
+	           $APP13_PHOTOSHOP_DIRNAME.'_PHUT' => $HASH_PHOTOSHOP_PHUT,
+	           $APP13_IPTC_DIRNAME.'_1'         => $HASH_IPTC_TAGS_1,
+	           $APP13_IPTC_DIRNAME.'_2'         => $HASH_IPTC_TAGS_2,},};
+	See also %$HASH_PHOTOSHOP_PATHINFO and %$HASH_PHOTOSHOP_GENERAL.
+	
+	* lib/Image/MetaData/JPEG/data/Tables.pm : the $APP13_PHOTOSHOP_TYPE
+	constant is now a reference to an array containing accepted strings
+	for a resource data block type. Currently, its value is the following:
+	$APP13_PHOTOSHOP_TYPE = ['8BIM', '8BPS', 'PHUT'];
+
+	* lb/Image/MetaData/JPEG/parsers/app13.pl (parse_resource_data_block): 
+        The content of each Photoshop non-IPTC data block is transformed
+	into a record and stored in a first-level subdirectory, depending
+	on its type. The block type is, in fact, no more supposed to be
+	'8BIM'; however, only some known values are accepted. See the
+	variable $APP13_PHOTOSHOP_TYPE in Tables.pm
+	
+	* lib/Image/MetaData/JPEG/Structures.pod: new note on resource
+	data block types in APP13, claryfing that 8BIM is only the default:
+	"The signature (type) is usually '8BIM', but Photoshop used '8BPS'
+	up to version 3.0, and some rogue program (Adobe PhotoDeluxe?) is
+	using 'PHUT' for path information (ID=7d0-bb7)."
+
+2006-04-29  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/dumpers/dumpers.pl: the content of this
+	file is now broken down into separate pieces, which are 'require'd
+	here (that is, included): app1.pl, app1_exif.pl, app13.pl.
+
+	* lib/Image/MetaData/JPEG/parsers/parsers.pl: the content of this
+	file is now broken down into separate pieces, which are 'require'd
+	here (that is, included): image.pl, app0.pl, app1.pl, app1_exif.pl, 
+	app1_exif_xmp.pl, app2.pl, app3.pl, app12.pl, app13.pl, app14.pl.
+
+	* lib/Image/MetaData/JPEG.pm: general reorganisation of files in
+	the project. New subdirs 'data', 'parsers', 'dumpers' and 'access'
+	created under 'JPEG'. The following use statements updated all 
+	over the project (prefix is always Image::MetaData::JPEG::) :
+	Tables               --> data::Tables
+        Tables_makernotes.pl --> data/Makernotes.pl
+        Segment_parsers.pl   --> parsers/parsers.pl
+        Segment_dumpers.pl   --> dumpers/dumpers.pl
+	JPEG_various.pl      --> access/various.pl
+        JPEG_comments.pl     --> access/comments.pl
+	JPEG_app1_exif.pl    --> access/app1_exif.pl
+	JPEG_app13.pl        --> access/app13.pl
+
+2006-04-09  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Tables.pm: new constants:
+	$APP1_XMP_XPACKET_ID = 'W5M0MpCehiHzreSzNTczkc9d'
+	$APP1_XMP_XPACKET_BEGIN = "\x{FEFF}"
+	$APP1_XMP_META_NS = 'adobe:ns:meta/'
+	$APP1_XMP_OUTER_RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#'
+	TagsAPP1 was broken into TagsAPP1_Exif and TagsAPP1_XMP. 
+	Relevant changes applied to JPEG_app1_exif.pl,
+	Segment_dumpers.pl and Segment_parsers.pl.
+	
+2006-04-08  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Structures.pod: completed syntax
+	description for the structure of an APP1 XMP segment.
+
+2006-04-01  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Structures.pod: added a new section
+	with title 'Structure of an XMP APP1 segment'.
+
+	* lib/Image/MetaData/JPEG.pod: started a new section with title:
+	'XMP data ("APP1" segments)', containing a very short description
+	of what is XMP and how it is used in JPEG files.
+
+	* t/JPEG_2_JPEG_class.t: explicit initialisation to "" of scalars 
+	whose reference is passed to JPEG::save (see bug #17835). Same 
+	change for t/JPEG_5_exif_Thumbnail.t, t/JPEG_5_exif_SubIFD.t,
+	t/JPEG_5_exif_GPS.t, t/JPEG_5_exif_IFD.t, t/JPEG_5_exif_IMAGE.t,
+	t/JPEG_5_exif_Interop.t, t/JPEG_4_app13_set.t, t/JPEG_3_comments.t
+	
+2006-03-27  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/Segment_parsers.pl (parse_app1_xmp): new
+	routine for parsing XML data. This is more clean and logical, I 
+	hope. It uses parse_xml_string() internally. Comments to be added.
+
+2006-02-28  Stefano Bettelli  <bettelli@cpan.org>
+
+	* lib/Image/MetaData/JPEG/JPEG_app1_exif.pl (set_Exif_thumbnail): 
+	explicitely initialise $r to an empty string. See bug #17835 on
+	rt.cpan.org concerning Image::MetaData::JPEG. Thanks to Brian Carp
+	for the related discussion. Other changes still to implement.
+	
 2006-01-06  Stefano Bettelli  <bettelli@cpan.org>
 
 	* lib/Image/MetaData/JPEG.pm: setting $VERSION to 0.15, and

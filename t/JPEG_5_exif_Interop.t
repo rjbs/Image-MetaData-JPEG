@@ -1,10 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables;
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
 my ($image, $image2, $seg, $hash, $hash2, $d1, $d2, $x_dim, $y_dim, $ref);
@@ -25,8 +20,10 @@ diag "Testing APP1 Exif data routines (INTEROP_DATA)";
 plan tests => 29;
 #=======================================
 
+BEGIN { use_ok ($::pkgname) or exit; }
+
 #########################
-$image = $cname->new($tphoto, '^(APP1|SOS)$');
+$image = newimage($tphoto, '^(APP1|SOS)$');
 $seg   = $image->retrieve_app1_Exif_segment(0);
 isnt( $seg, undef, "The Exif segment is there, hi!" );
 
@@ -84,9 +81,9 @@ $hash = $image->set_Exif_data($data2, 'INTEROP_DATA', 'ADD');
 is_deeply( $hash, {}, "adding without the Interop. dir" );
 
 #########################
-$ref = \ "dummy";
+$ref = \ (my $buffer = "");
 $image->save($ref);
-$image2 = $cname->new($ref, '^(APP1|SOS)$');
+$image2 = newimage($ref, '^(APP1|SOS)$');
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################
@@ -97,7 +94,7 @@ $d2 =~ s/(.*REFERENCE.*-->).*/$1/g; $d2 =~ s/Original.*//g;
 is( $d1, $d2, "Descriptions after write/read cycle are coincident" );
 
 #########################
-$image = $cname->new($tphoto, '^(APP1|SOS)$');
+$image = newimage($tphoto, '^(APP1|SOS)$');
 $hash = $image->set_Exif_data({0x1 =>"R97"}, 'INTEROP_DATA', 'ADD');
 ok( exists $$hash{1}, "Malformed Index rejected" );
 
@@ -153,7 +150,7 @@ is_deeply( $hash2, $hash, "same result after deleting Exif data and forging");
 
 #########################
 $image->save($ref);
-$image2 = $cname->new($ref, '^(APP1|SOS)$');
+$image2 = newimage($ref, '^(APP1|SOS)$');
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 ### Local Variables: ***

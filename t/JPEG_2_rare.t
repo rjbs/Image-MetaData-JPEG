@@ -1,6 +1,4 @@
-use Test::More;
-use strict;
-use warnings;
+BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
@@ -17,13 +15,12 @@ diag "Testing JPEG segments seldom used methods";
 plan tests => 30;
 #=======================================
 
-#########################
-BEGIN { $::cname  = 'Image::MetaData::JPEG'; use_ok $::cname; }
-BEGIN { $::sname  = $::cname . '::Segment' ; use_ok $::sname; }
-BEGIN { use_ok $::cname . '::Tables', qw(:TagsAPP2); }
+BEGIN { use_ok ($::tabname, qw(:TagsAPP2)) or exit; }
+BEGIN { use_ok ($::pkgname) or exit; } # this must be loaded second!
+BEGIN { use_ok ($::segname) or exit; } # this must be loaded second!
 
 #########################
-$image = $::cname->new($tphoto);
+$image = newimage($tphoto);
 @segs = $image->get_segments('APP1');
 isnt( scalar @segs, 0, "An APP1 segment is there" );
 
@@ -64,7 +61,7 @@ is( $num, scalar keys %$hash, "All values are scalars" );
 
 #########################
 { local $SIG{'__WARN__'} = sub { $problem = shift; };
-  $problem = undef; $image = $::cname->new($tfrank); }
+  $problem = undef; $image = newimage($tfrank); }
 isnt( $image, undef, "Frankenstein file read" );
 
 #########################
@@ -87,33 +84,33 @@ $num = grep { /2\.5/ } map { $_->search_record_value('Identifier') } @segs;
 is( $num, 1, "Prehistoric APP13 identifier found" );
 
 #########################
-$seg = $::sname->new('APP0', \ "JFXX\001");
+$seg = newsegment('APP0', \ "JFXX\001");
 isnt( $seg->{error}, undef, "An APP0 segment with an invalid identifier" );
 
 #########################
-$seg = $::sname->new('APP1', undef, 'NOPARSE');
+$seg = newsegment('APP1', undef, 'NOPARSE');
 $seg->store_record('Namespace', 1, \ "\000");
 trap_error('WARN', '$seg->update()');
 like( $problem, qr/[Rr]everting/, "XPM APP1 segments not updatable yet" );
 
 #########################
-$seg = $::sname->new('APP1', undef, 'NOPARSE');
+$seg = newsegment('APP1', undef, 'NOPARSE');
 $seg->store_record('Unknown', 1, \ "\000");
 trap_error('WARN', '$seg->update()');
 like( $problem, qr/[Rr]everting/, "APP1 seg. with unknown format catched" );
 
 #########################
-$seg = $::sname->new('APP1', undef, 'NOPARSE');
+$seg = newsegment('APP1', undef, 'NOPARSE');
 eval { $seg->update() };
 isnt( $@, '', "Dump of APP1 segment with no records catched" );
 
 #########################
-$seg = $::sname->new('APP2', \ "${APP2_FPXR_TAG}\000\003");
+$seg = newsegment('APP2', \ "${APP2_FPXR_TAG}\000\003");
 $rec = $seg->search_record('Unknown');
 isnt( $rec, undef, "An APP2 FPXR segment with a reserved type" );
 
 #########################
-$seg = $::sname->new('APP2', \ "${APP2_FPXR_TAG}\000\004");
+$seg = newsegment('APP2', \ "${APP2_FPXR_TAG}\000\004");
 isnt( $seg->{error}, undef, "An APP2 FPXR segment with an invalid type" );
 
 #########################
@@ -123,9 +120,9 @@ ok( $problem, "Generation of warning reports works" );
 
 #########################
 { local $SIG{'__WARN__'} = sub {$problem = shift; };
-  eval '$'."$::cname".'::show_warnings = undef';
+  eval '$'."$::pkgname".'::show_warnings = undef';
   $problem = undef; $num = $image->find_new_app_segment_position();
-  eval '$'."$::cname".'::show_warnings = 1'; }
+  eval '$'."$::pkgname".'::show_warnings = 1'; }
 ok( ! $problem, "Generation of warnings can be inhibited" );
 
 #########################
@@ -135,29 +132,29 @@ ok( $problem, "Generation of error reports works" );
 
 #########################
 { local $SIG{'__DIE__'} = sub { $problem = shift; };
-  eval '$'."$::cname".'::show_warnings = undef';
+  eval '$'."$::pkgname".'::show_warnings = undef';
   $problem = undef; eval {$image->drop_segments(undef)};
-  eval '$'."$::cname".'::show_warnings = 1'; }
+  eval '$'."$::pkgname".'::show_warnings = 1'; }
 ok( $problem, "Generation of errors cannot be inhibited" );
 
 #########################
 $data = "\377\330\377\376\000\010commento\377\331"; # COM lenght should be 10
-trap_error('WARN', '$::cname->new(\ $data)');
+trap_error('WARN', 'newimage(\ $data)');
 like( $problem, qr/Skipping/, "Forgiving a few bytes before next marker" );
 
 #########################
 $data = "\377\330\377\376\000\010commento" . "x"x100; # too much garbage
-trap_error('DIE', '$::cname->new(\ $data)');
+trap_error('DIE', 'newimage(\ $data)');
 like( $problem, qr/Unknown punctuat/, "Too much garbage cannot be forgiven" );
 
 #########################
 $data = "\377\330\377\376\000\010commento"; # no next marker
-trap_error('DIE', '$::cname->new(\ $data)');
+trap_error('DIE', 'newimage(\ $data)');
 like( $problem, qr/marker not found/, "Error on next marker not found" );
 
 #########################
 $data = "\377\330\377\376\000\010com"; # not enough data
-trap_error('DIE', '$::cname->new(\ $data)');
+trap_error('DIE', 'newimage(\ $data)');
 like( $problem, qr/data not found/, "Error on segment too short" );
 
 ### Local Variables: ***

@@ -1,10 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables qw(:Lookups);
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tthumb = 't/test_thumbnail.jpg';
 my $tdata  = 't/test_photo.desc';
@@ -17,8 +12,11 @@ diag "Testing APP1 Exif data routines (thumbnail)";
 plan tests => 26;
 #=======================================
 
+BEGIN { use_ok ($::tabname, qw(:Lookups)) or exit; }
+BEGIN { use_ok ($::pkgname) or exit; } # this must be loaded second!
+
 #########################
-$image = $cname->new($tphoto, '^APP1$');
+$image = newimage($tphoto, '^APP1$');
 $hash = $image->get_Exif_data('ALL', 'TEXTUAL');
 isnt( $image->retrieve_app1_Exif_segment(), undef,
       "The Exif segment is there, hi!" );
@@ -31,16 +29,16 @@ isnt( $dataref, undef, "Thumbnail data found" );
 is( ref $dataref, 'SCALAR', "... as a reference to a scalar" );
 
 #########################
-$thumb = $cname->new($dataref);
+$thumb = newimage($dataref);
 ok( $thumb, "It is a valid JPEG image" );
 
 #########################
-$thumb = $cname->new($tthumb, '');
+$thumb = newimage($tthumb, '');
 ok( $thumb, "JPEG Thumbnail read from disk" );
 
 #########################
 $thumb->save($dataref);
-$thumb = $cname->new($dataref);
+$thumb = newimage($dataref);
 ok( $thumb, "JPEG Thumbnail 'saved' in memory" );
 
 #########################
@@ -48,9 +46,9 @@ $result = $image->set_Exif_data($dataref, 'THUMBNAIL');
 is_deeply( $result, {}, "New JPEG thumbnail set (scalar)" );
 
 #########################
-$dataref2 = \ 'dummy';
+$dataref2 = \ (my $buffer = "");
 $image->save($dataref2);
-$image = $cname->new($dataref2, '^APP1$');
+$image = newimage($dataref2, '^APP1$');
 $dataref2 = $image->get_Exif_data('THUMBNAIL');
 is_deeply( $dataref, $dataref2, "... it containes the new data block" );
 

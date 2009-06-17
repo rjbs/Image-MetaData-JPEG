@@ -615,7 +615,6 @@ i.e. v.2.2, is automatically added by this module if necessary).
   7) A date tag value is a null terminated string of the form "YYYY:MM:DD"
      (note the colon signs). [I currently allow only years after 1800].
 
-YYYY:MM:DD
 =head1 Valid tags for Photoshop-style APP13 data
 
 The structure of a Photoshop-style APP13 segment is introduced in section

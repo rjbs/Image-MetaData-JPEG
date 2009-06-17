@@ -1,10 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables qw(:RecordTypes);
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
 my ($image, $thumbimage, $seg1, $seg2, $hash, $hash2, $records,
@@ -15,8 +10,11 @@ diag "Testing APP1 Exif data routines";
 plan tests => 42;
 #=======================================
 
+BEGIN { use_ok ($::tabname, qw(:RecordTypes)) or exit; }
+BEGIN { use_ok ($::pkgname) or exit; } # this must be loaded second!
+
 #########################
-$image = $cname->new($tphoto);
+$image = newimage($tphoto);
 is( $image->get_segments('APP1$'), 1, "Number of APP1 segments" );
 
 #########################
@@ -147,7 +145,7 @@ is( length $$data, $$hash{'JPEGInterchangeFormatLength'}[0],
     "thumbnail data size from IFD1 data OK" );
 
 #########################
-$thumbimage = $cname->new($data);
+$thumbimage = newimage($data);
 ok( $thumbimage, "This thumbnail is a valid JPEG file" );
 
 #########################

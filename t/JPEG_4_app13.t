@@ -1,10 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables qw(:TagsAPP13);
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $shop   = 'PHOTOSHOP';
 my ($image, $seg1, $seg2, $rec, $val, $hash, $num, $segs, $fh, $desc1, $desc2);
@@ -14,11 +9,14 @@ diag "Testing APP13 IPTC basic routines";
 plan tests => 53;
 #=======================================
 
+BEGIN { use_ok ($::tabname, qw(:TagsAPP13)) or exit; }
+BEGIN { use_ok ($::pkgname) or exit; } # this must be loaded second!
+
 #########################
 {open $fh, $0; is( (grep { /set_app13_data/ } <$fh>), 1, "No setters here" );}
 
 #########################
-$image = $cname->new($tphoto);
+$image = newimage($tphoto);
 is( $image->get_segments('APP13'), 1, "Number of APP13 segments" );
 
 #########################
@@ -143,7 +141,7 @@ is( scalar keys %$hash, 1, "One mandatory dataset inserted for IPTC_1" );
 ok( exists $$hash{0}, "... and it is the version dataset" );
 
 #########################
-$image = $cname->new($tphoto); # reset
+$image = newimage($tphoto); # reset
 $seg1 = $image->retrieve_app13_segment(0, $shop);
 $seg2 = $image->provide_app13_segment($shop);
 is_deeply( $seg1, $seg2, "Get IPTC segment in two ways [Photoshop]" );
@@ -154,7 +152,7 @@ $seg2 = $image->provide_app13_segment('IPTC');
 is_deeply( $seg1, $seg2, "Get IPTC segment in two ways [IPTC]" );
 
 #########################
-$num = scalar @{$seg1->search_record_value($APP13_PHOTOSHOP_DIRNAME)};
+$num = scalar @{$seg1->search_record_value($APP13_PHOTOSHOP_DIRNAME.'_8BIM')};
 $hash = $seg1->get_app13_data('NUMERIC', $shop);
 is( scalar keys %$hash, $num, "Num elements from numeric get [Photoshop]" );
 
@@ -221,7 +219,7 @@ eval { $hash = $image->get_app13_data('ILLEGAL', 'IPTC'); };
 isnt( $@, undef, "get_app13_data fails with illegal type" );
 
 #########################
-$image = $cname->new($tphoto);
+$image = newimage($tphoto);
 $seg1  = $image->retrieve_app13_segment(0, 'IPTC');
 $desc1 = $seg1->get_description();
 $hash  = $seg1->get_app13_data('NUMERIC', 'IPTC');

@@ -5,8 +5,8 @@
 ###########################################################
 package Image::MetaData::JPEG::Record;
 use Image::MetaData::JPEG::Backtrace;
-use Image::MetaData::JPEG::Tables qw(:Endianness  :RecordTypes
-				     :RecordProps :Lookups);
+use Image::MetaData::JPEG::data::Tables 
+    qw(:Endianness :RecordTypes :RecordProps :Lookups);
 no  integer;
 use strict;
 use warnings;
@@ -503,7 +503,7 @@ sub get_description {
 	    $$section_hash{$descriptor} }
     # calculate an appropriate tabbing
     my $tabbing = " \t" x (scalar @$names);
-    # prepare the description (don't make it exceed $maxlen characters)
+    # prepare the description (don't make it exceed $maxlen characters).
     $descriptor = substr($descriptor, 0, $maxlen/2)
 	. "..." . substr($descriptor, - $maxlen/2 + 3)
 	if length($descriptor) > $maxlen;

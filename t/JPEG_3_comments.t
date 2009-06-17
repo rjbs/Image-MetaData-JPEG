@@ -1,16 +1,12 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
 my $limit  = 2**16 - 3;
 my $com2   = 'x' x $limit;
 my $com3   = 'x' x ($limit + 1);
 my $com4   = "Regular comment";
-my ($image, $newim, @list, $num, @savelist, @sl, $bufferref);
+my ($image, $newim, @list, $num, @savelist, @sl, $buffer);
 
 my $reduce = sub {
     @{$_[0]} = map {(length $_ > $limit) ? (substr($_,0,$limit),
@@ -21,8 +17,10 @@ diag "Testing comment routines";
 plan tests => 24;
 #===============================
 
+BEGIN { use_ok ($::pkgname) or exit; }
+
 #########################
-$image = $cname->new($tphoto);
+$image = newimage($tphoto);
 is( $image->get_number_of_comments(), $num=1, "Get number of comments" );
 
 #########################
@@ -119,9 +117,8 @@ isnt( $@, '', "Invalid index in join_comments catched" );
 #########################
 $image->remove_all_comments();
 $image->add_comment($_) for @savelist; $num = @savelist;
-$bufferref = \ "dummy";
-$image->save($bufferref);
-$newim = $cname->new($bufferref);
+$image->save(\ ($buffer = ""));
+$newim = newimage(\ $buffer);
 @list = $newim->get_comments();
 is_deeply( \@list, \@savelist, "Save and re-read" );
 
@@ -129,8 +126,8 @@ is_deeply( \@list, \@savelist, "Save and re-read" );
 $image->remove_all_comments();
 $image->add_comment("Dummy");
 $image->set_comment(0, "");
-$image->save($bufferref);
-$newim = $cname->new($bufferref);
+$image->save(\ ($buffer = ""));
+$newim = newimage(\ $buffer);
 ok( $newim, "Saving a picture with a null comment" );
 
 #########################

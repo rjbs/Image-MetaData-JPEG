@@ -333,6 +333,206 @@ than 4 bytes, it is recorded in the lower end of the 4-byte area (smaller
 offsets). For further details see the section
 L<Image::MetaData::JPEG::TagLists/Valid tags for Exif APP1 data>.
 
+=head2 Structure of an XMP APP1 segment
+
+XMP (eXtensible Metadata Platform) JPEG files use APP1 segments in order to
+store metadata information; the storage format (serialisation) is RDF
+(Resource Description Framework) implemented as an application of XML. XMP
+Exif APP1 segments can store all information stored in Exif and IPTC
+segments, as well as custom and future schemas. The reference document for
+XMP 3.2 can be requested from Adobe Systems Incorporated:
+
+   B<"XMP Specification", version 3.2, June 2005, Adobe Systems Inc.,
+   345 Park Avenue, San Jose, CA 95110-2704, L<http://www.adobe.com>>
+
+   B<See also: L<http://xml.coverpages.org/xmp.html>>
+   B<See also: L<http://www.w3.org/TR/REC-rdf-syntax/>>
+
+XMP APP1 segments are made up by an identifier and a Unicode XMP packet
+(the encoding is usually UTF-8, but it can also be UTF-16 or UTF-32, both
+big-endian or little-endian). The packet cannot be split in multiple
+segments, so there is a maximum size of approximately 64KB. The structure
+is very simple: a fixed XMP namespace URI (null terminated, and without
+quotation marks) followed by the XMP packet:
+
+    [Record name]    [size]   [description]
+    ---------------------------------------
+    Identifier      29 bytes   http://ns.adobe.com/xap/1.0/\000
+    <XMP packet>       ...     the actual Unicode XMP packet
+
+The packet content is sandwiched between a header and a trailer, and may
+contain padding whitespaces at the end. The I<xpacket> header has two
+mandatory attributes, I<begin> and I<id> (order is important), separated by
+exactly one space (U+0020). Attribute values, here and in the following,
+are enclosed by single quotes (U+0027) or double quotes (U+0022). The value
+of I<begin> must be the Unicode I<zero-width non-breaking space> (U+FEFF),
+to be used as a byte-order marker during blind scans; an empty value is
+also acceptable (for backward compatibility), and stands for UTF-8. The
+value of I<id> is fixed. Other attributes, like (deprecated) I<bytes> or
+I<encoding>, may be ignored. A padding of 2KB or 4KB, with a newline every
+100 spaces, is recommended. The I<end> attribute of the trailer may have a
+value of "r" (read-only) or "w" (modifiable).
+
+    Header      <?xpacket begin="..." id="W5M0MpCehiHzreSzNTczkc9d" ...?>
+    Content       ... serialised XMP data (see later) ...
+    Padding       ... padding with XML whitespaces ...
+    Trailer     <?xpacket end="w"?>
+
+The structure of the packet content is as follows. There is an optional
+I<x:xmpmeta> (or I<x:xapmeta> for older files) element, with a mandatory
+I<xmlns:x> attribute set to "adobe:ns:meta/" and other optional attributes,
+which can be ignored (currently, Adobe's toolkit stores its version in
+I<x:xmptk>). Inside it (or at top level, if it is absent), there is exactly
+one I<rdf:RDF> element with an attribute specifying the I<xmlns:rdf>
+namespace (other namespaces, whose role is not clear to me, can be listed
+here as additional attributes). Inside the I<rdf:RDF> element then, all XMP
+properties are stored inside one or more I<rdf:Description> elements:
+
+    <x:xmpmeta xmlns:x='adobe:ns:meta/' ..opt.attributes..>
+       <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+          <rdf:Description ...> .... </rdf:Description>
+          <rdf:Description ...> .... </rdf:Description>
+          .........
+          <rdf:Description ...> .... </rdf:Description>
+       </rdf:RDF>
+    </x:xmpmeta>
+
+B<rdf:Description> elements and schemas are usually in one-to-one
+correspondence, although this is just a convention and not a rule. Each
+element has two mandatory attributes, I<rdf:about> and I<xmlns:NAME>. The
+I<rdf:about> attribute is usually empty (it can however contain an
+application specific URI), and its value B<must> be shared among all
+I<rdf:Description> elements. The I<xmlns:NAME> attribute specifies the
+local namespace prefix (NAME stands for the actual prefix). Additional
+namespaces can be specified via I<xmlns> attributes.
+
+    <rdf:Description rdf:about="" xmlns:NAME="...">
+       <NAME:propname1 ...> .... </NAME:propname1>
+       <NAME:propname2 ...> .... </NAME:propname2>
+          .........
+       <NAME:propnameN ...> .... </NAME:propnameN>
+    </rdf:Description>
+
+Properties can come in various flavours. A B<simple property> is just some
+literal value between opening and closing tags carrying the property name;
+there exists also an abbreviated form where properties are listed as
+attributes of the I<rdf:Description> tag (in this case there is no closing
+I<rdf:Description> tag, and the opening tags ends with the '/' character).
+Simple properties can have qualifiers (attributes). This is an example of a
+description element with only simple properties:
+
+    <rdf:Description rdf:about="" xmlns:xap="http://ns.adobe.com/xap/1.0/">
+       <xap:CreatorTool>Adobe Photoshop Elements 3.0</xap:CreatorTool>
+       <xap:ModifyDate>2005-05-12T44:39:11+03:00</xap:ModifyDate>
+    </rdf:Description>
+                                  or
+
+    <rdf:Description rdf:about="" xmlns:xap="http://ns.adobe.com/xap/1.0/"
+       xap:CreatorTool="Adobe Photoshop Elements 3.0"
+       xap:ModifyDate="2005-06-13T23:38:11+02:00"/>
+
+A B<structured property> is characterised by a I<rdf:Description> block
+instead of a simple content. The inner description block, which does not
+allow for an I<rdf:about> attribute, contains one or more named properties
+(which can, of course, contain further substructures). This is an example
+of a description element with one structured property:
+
+    <rdf:Description rdf:about="" xmlns:xmpTPg="..an URI..">
+       <xmpTPg:MaxPageSize>
+          <rdf:Description xmlns:stDim="..another URI.."> ---.   Content
+             <stDim:w>21</stDim:w>                           |   of  the
+             <stDim:h>27</stDim:h>                           | MaxPageSize
+             <stDim:unit>centimetres</stDim:unit>            |  structured
+          </rdf:Description>                -----------------'   property
+       </xmpTPg:MaxPageSize>
+    </rdf:Description>
+
+An B<array property> is, on the other hand, just an array of same-type
+properties. It can come in three varieties: as a I<Bag> (an unordered set),
+as a I<Seq>uence (an ordered list) and as an I<Alt>ernative list (see
+later). As for structured properties, each item in the array is a property
+and can contain further substructures. The item list is delimited by an
+I<rdf:Bag>, an I<rdf:Seq>, or an I<rdf:Alt> tag pair, respectively. Each
+item is delimited by a pair of I<rdf:li> tags. The following example
+illustrates an unordered array property with three items:
+
+    <rdf:Description rdf:about="" xmlns:dc="..an URI..">
+       <dc:subject>
+          <rdf:Bag>                         ----------------.   Content
+             <rdf:li>metadata</rdf:li>                      |   of  the
+             <rdf:li>schema</rdf:li>                        |  unordered
+             <rdf:li>XMP</rdf:li>                           |    array 
+          </rdf:Bag>                        ----------------'  dc:subject
+       </dc:subject>
+    </rdf:Description>
+
+A simple property (but, currently, not a structured or array property) can
+have I<qualifiers>. For instance, items in an array property can be
+qualified; in this case, the content of I<rdf:li> is not text, but an
+I<rdf:Description> (without attributes) containing the actual value (as
+I<rdf:value>) and the qualifiers as additional properties; a qualifier name
+belongs to a secondary namespace, specified as an attribute of the outer
+I<rdf:Description>. The following example illustrates the use of property
+qualifiers:
+
+    <rdf:Description rdf:about="" xmlns:dc="..1stURI.." xmlns:ns="..2ndURI..">
+       <dc:creator>
+          <rdf:Seq>   
+             <rdf:li>                       ----------------.  An element
+                <rdf:Description>                           |    of the
+                   <rdf:value>William Gilbert</rdf:value>   | ordered array 
+                   <ns:role>lyricist</ns:role>              |  dc:creator
+                </rdf:Description>                          |    with a
+             </rdf:li>                      ----------------'   qualifier
+             <rdf:li>
+                <rdf:Description> 
+                   <rdf:value>Arthur Sullivan</rdf:value>
+                   <ns:role>composer</ns:role>
+                </rdf:Description>
+             </rdf:li>
+          </rdf:Seq>
+       </dc:creator>
+    </rdf:Description>
+
+Text properties in an I<alternative array property> may have a special
+qualifier (the I<xml:lang> property) specifying the language of the
+text. In this case, the serialisation is different: I<xml:lang> for each
+item of the array becomes an attribute of the I<rdf:li> tag. The default
+value is indicated by a special value of the qualifier, or is taken from
+the first item in the list. The following example illustrates an array of
+I<language alternatives>:
+
+    <xmp:Title>
+       <rdf:Alt>                            ----------------.     List of
+          <rdf:li xml:lang="x-default">Title</rdf:li>       |  alternatives
+          <rdf:li xml:lang="en-us">Title</rdf:li>           |  corresponding
+          <rdf:li xml:lang="fr-fr">Titre</rdf:li>           |  to xmp:Title;
+          <rdf:li xml:lang="it-it">Titolo</rdf:li>          |  the  language 
+       </rdf:Alt>                           ----------------'   is xml:lang
+    </xmp:Title>
+
+The interpretation of the values of properties conforming to the previously
+described syntax is done with the aid of the B<schema> corresponding to the
+property namespace. The most common schemas in JPEG files are the following
+ones (note, however, that XMP is intrinsically extensible, so this list
+will never be exhaustive):
+
+=over
+
+=item Dublin Core schema
+=item XMP basic schema
+=item XMP rights management schema
+=item XMP media management schema
+=item XMP basic job ticket schema
+=item XMP paged-text schema
+=item XMP dynamic media schema
+=item Adobe Photoshop schema
+=item Camera row schema
+=item Exif schemas
+=item IPTC schema
+
+=back
+
 =head2 Structure of a Photoshop-style APP13 segment
 
 The Adobe's Photoshop program, a de-facto standard for image manipulation,
@@ -349,7 +549,7 @@ structure:
 
     [Record name]    [size]   [description]
     ---------------------------------------
-    (Type)           4 bytes  Photoshop always uses '8BIM'
+    (Type)           4 bytes  Photoshop uses '8BIM' from ver 4.0 on
     (ID)             2 bytes  a unique identifier, e.g., "\004\004" for IPTC
     (Name)             ...    a Pascal string (padded to make size even)
     (Size)           4 bytes  actual size of resource data
@@ -358,7 +558,10 @@ structure:
 (a Pascal string is made up of a single byte, giving the string length,
 followed by the string itself, padded to make size even including the
 length byte; since the string length is explicit, there is no need of a
-terminating null character). Valid Image Resource IDs are listed in the
+terminating null character). The signature (type) is usually '8BIM', but
+Photoshop used '8BPS' up to version 3.0, and some rogue program (Adobe
+PhotoDeluxe?) is using 'PHUT' ("PHotoshop User Tags" ?) for path
+information (ID=7d0-bb7). Valid Image Resource IDs are listed in the
 L<Photoshop-style tags' list|Image::MetaData::JPEG::TagLists/Valid tags for
 Photoshop-style APP13 data> section. In general a resource block contains
 only a few bytes, but there is an important block, the IPTC block, which

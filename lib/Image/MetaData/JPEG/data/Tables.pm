@@ -3,9 +3,10 @@
 # Copyright (C) 2004,2005,2006 Stefano Bettelli           #
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
-package Image::MetaData::JPEG::Tables;
-use Exporter;
+package Image::MetaData::JPEG::data::Tables;
+use Exporter 'import';
 use strict;
+use warnings;
 no  integer;
 
 #============================================================================#
@@ -27,11 +28,13 @@ our %EXPORT_TAGS =                                                           #
      JPEGgrammar => [qw($JPEG_PUNCTUATION %JPEG_MARKER $JPEG_SEG_MAX_LEN)],  #
      TagsAPP0    => [qw($APP0_JFIF_TAG $APP0_JFXX_TAG $APP0_JFXX_JPG),       #
 		     qw($APP0_JFXX_1B $APP0_JFXX_3B $APP0_JFXX_PAL)],        #
-     TagsAPP1    => [qw($APP1_EXIF_TAG $APP1_XMP_TAG $APP1_TIFF_SIG),        #
-		     qw($APP1_TH_JPEG $APP1_TH_TIFF $APP1_TH_TYPE),          #
-		     qw($THJPEG_OFFSET $THJPEG_LENGTH),                      #
-		     qw($THTIFF_OFFSET $THTIFF_LENGTH),                      #
+     TagsAPP1_Exif=>[qw($APP1_TH_JPEG $APP1_TH_TIFF $APP1_TH_TYPE),          #
+		     qw($APP1_EXIF_TAG $THJPEG_OFFSET $THJPEG_LENGTH),       #
+		     qw($APP1_TIFF_SIG $THTIFF_OFFSET $THTIFF_LENGTH),       #
 		     qw(%IFD_SUBDIRS $HASH_MAKERNOTES $MAKERNOTE_TAG)],      #
+     TagsAPP1_XMP=> [qw($APP1_XMP_TAG $APP1_XMP_XPACKET_BEGIN),              #
+                     qw($APP1_XMP_XPACKET_ID $APP1_XMP_META_NS),             #
+		     qw($APP1_XMP_OUTER_RDF_NS)],                            #
      TagsAPP2    => [qw($APP2_FPXR_TAG $APP2_ICC_TAG)],                      #
      TagsAPP3    => [qw($APP3_EXIF_TAG %IFD_SUBDIRS)],                       #
      TagsAPP13   => [qw($APP13_PHOTOSHOP_IPTC $APP13_PHOTOSHOP_IDS),         #
@@ -40,9 +43,10 @@ our %EXPORT_TAGS =                                                           #
      TagsAPP14   => [qw($APP14_PHOTOSHOP_IDENTIFIER)],                       #
      Lookups     => [qw(&JPEG_lookup)], );                                   #
 #----------------------------------------------------------------------------#
-Exporter::export_ok_tags                                                     #
+Exporter::export_ok_tags(                                                    #
     qw(RecordTypes RecordProps Endianness JPEGgrammar),                      #
-    qw(TagsAPP0 TagsAPP1 TagsAPP2 TagsAPP3 TagsAPP13 TagsAPP14 Lookups);     #
+    qw(TagsAPP0 TagsAPP1_Exif TagsAPP1_XMP),                                 #
+    qw(TagsAPP2 TagsAPP3 TagsAPP13 TagsAPP14 Lookups));                      #
 #============================================================================#
 #============================================================================#
 #============================================================================#
@@ -141,6 +145,10 @@ our $APP0_JFXX_3B		= 0x13;                                      #
 our $APP0_JFXX_PAL		= 768;                                       #
 our $APP1_EXIF_TAG		= "Exif\000\000";                            #
 our $APP1_XMP_TAG		= "http://ns.adobe.com/xap/1.0/\000";        #
+our $APP1_XMP_XPACKET_ID        = 'W5M0MpCehiHzreSzNTczkc9d';                #
+our $APP1_XMP_XPACKET_BEGIN     = "\x{FEFF}";                                #
+our $APP1_XMP_META_NS           = 'adobe:ns:meta/';                          #
+our $APP1_XMP_OUTER_RDF_NS      ='http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 our $APP1_TIFF_SIG		= 42;                                        #
 our $APP1_TH_TIFF		= 1;                                         #
 our $APP1_TH_JPEG		= 6;                                         #
@@ -148,7 +156,7 @@ our $APP2_FPXR_TAG		= "FPXR\000";                                #
 our $APP2_ICC_TAG		= "ICC_PROFILE\000";                         #
 our $APP3_EXIF_TAG		= "Meta\000\000";                            #
 our $APP13_PHOTOSHOP_IDS        = ["Photoshop 3.0\000",'Adobe_Photoshop2.5:'];
-our $APP13_PHOTOSHOP_TYPE	= '8BIM';                                    #
+our $APP13_PHOTOSHOP_TYPE	= ['8BIM', '8BPS', 'PHUT'];                  #
 our $APP13_PHOTOSHOP_IPTC	= 0x0404;                                    #
 our $APP13_PHOTOSHOP_DIRNAME    = 'Photoshop_RECORDS';                       #
 our $APP13_IPTC_TAGMARKER	= 0x1c;                                      #
@@ -825,6 +833,11 @@ my $HASH_IPTC_GENERAL_2 =                                                    #
 # change in future. The only effect is to inhibit a direct assignement of    #
 # the 'IPTC/NAA' dataset, which must be modified with specialised routines.  #
 #----------------------------------------------------------------------------#
+my $HASH_PHOTOSHOP_PATHINFO =                                                #
+{( map { $_ => [ sprintf("PathInfo_%3x",$_),                                 #
+		 ' ', 0, 65535, 'binary'] } (0x07d0..0x0bb6) ),              #
+ 0x0bb7 => ['ClippingPathName',         ' ', 0, 65535, 'binary'        ], }; #
+#----------------------------------------------------------------------------#
 my $HASH_PHOTOSHOP_GENERAL =                                                 #
 {0x03e8 => ['Photoshop2Info',           ' ', 0, 65535, 'binary'           ], #
  0x03e9 => ['MacintoshPrintInfo',       ' ', 0, 65535, 'binary'           ], #
@@ -878,11 +891,10 @@ my $HASH_PHOTOSHOP_GENERAL =                                                 #
  0x041d => ['AlphaIdentifiers',         ' ', 0, 65535, 'binary'           ], #
  0x041e => ['URLList',                  ' ', 0, 65535, 'binary'           ], #
  0x0421 => ['VersionInfo',              ' ', 0, 65535, 'binary'           ], #
- 0x0bb7 => ['ClippingPathName',         ' ', 0, 65535, 'binary'           ], #
  0x2710 => ['PrintFlagsInfo',           ' ', 0, 65535, 'binary'        ], }; #
 #----------------------------------------------------------------------------#
-$$HASH_PHOTOSHOP_GENERAL{$_} =                                               #
-    [sprintf("PathInfo_%3x",$_),' ',0,65535,'binary'] for 0x07d0..0x0bb6;    #
+@$HASH_PHOTOSHOP_GENERAL{keys %$HASH_PHOTOSHOP_PATHINFO} =                   #
+    values %$HASH_PHOTOSHOP_PATHINFO;                                        #
 #============================================================================#
 #============================================================================#
 #============================================================================#
@@ -892,6 +904,7 @@ $$HASH_PHOTOSHOP_GENERAL{$_} =                                               #
 # %$HASH_APP1_IFD is built by merging the first column of 3 different hashes.#
 #----------------------------------------------------------------------------#
 my $HASH_PHOTOSHOP_TAGS  = generate_lookup($HASH_PHOTOSHOP_GENERAL     ,0);  #
+my $HASH_PHOTOSHOP_PHUT  = generate_lookup($HASH_PHOTOSHOP_PATHINFO    ,0);  #
 my $HASH_IPTC_TAGS_1     = generate_lookup($HASH_IPTC_GENERAL_1        ,0);  #
 my $HASH_IPTC_TAGS_2     = generate_lookup($HASH_IPTC_GENERAL_2        ,0);  #
 my $HASH_APP1_ROOT       = generate_lookup($HASH_APP1_ROOT_GENERAL     ,0);  #
@@ -919,7 +932,7 @@ $$HASH_APP1_SUBIFD{Interop} = $HASH_APP1_INTEROP;  # Interoperability tags   #
 # inclusion is the $HASH_MAKERNOTES hash reference, containing all relevant  #
 # parameters. We only have to link this new table into $HASH_APP1_SUBIFD.    #
 #----------------------------------------------------------------------------#
-our $HASH_MAKERNOTES = require 'Image/MetaData/JPEG/Tables_makernotes.pl';   #
+our $HASH_MAKERNOTES = require 'Image/MetaData/JPEG/data/Makernotes.pl';     #
 $$HASH_APP1_SUBIFD{'MakerNoteData_' . $_} =                                  #
     generate_lookup($$HASH_MAKERNOTES{$_}{tags} ,0)                          #
     for keys %$HASH_MAKERNOTES;                                              #
@@ -942,17 +955,21 @@ $$HASH_PHOTOSHOP_TAGS{__syntax} = $HASH_PHOTOSHOP_GENERAL;                   #
 # through this structure is best done with the help of the JPEG_lookup       #
 # function, so this hash is not exported (as it was some time ago).          #
 #----------------------------------------------------------------------------#
+my $psdirname = sub { $APP13_PHOTOSHOP_DIRNAME . '_' . $_[0] };              #
+#----------------------------------------------------------------------------#
 my $JPEG_RECORD_NAME =                                                       #
 {APP1  => {%$HASH_APP1_ROOT,                                   # APP1 root   #
 	   IFD0                     => $HASH_APP1_IFD,         # main image  #
 	   IFD1                     => $HASH_APP1_IFD, },      # thumbnail   #
  APP2  => {TagTable                 => $HASH_APP2_ICC, },      # ICC data    #
  APP3  => {IFD0                     => $HASH_APP3_IFD, },      # main image  #
- APP13 => {$APP13_PHOTOSHOP_DIRNAME => $HASH_PHOTOSHOP_TAGS,   # PS:non-IPTC #
+ APP13 => {&$psdirname('8BIM')      => $HASH_PHOTOSHOP_TAGS,   # PS:8BIM     #
+	   &$psdirname('8BPS')      => $HASH_PHOTOSHOP_TAGS,   # PS: < ver 4 #
+	   &$psdirname('PHUT')      => $HASH_PHOTOSHOP_PHUT,   # PS:PHUT     #
 	   $APP13_IPTC_DIRNAME.'_1' => $HASH_IPTC_TAGS_1,      # PS:IPTC R:1 #
 	   $APP13_IPTC_DIRNAME.'_2' => $HASH_IPTC_TAGS_2, }, };# PS:IPTC R:2 #
 #----------------------------------------------------------------------------#
-    
+
 ###########################################################
 # This helper function returns record data from the       #
 # %$JPEG_RECORD_NAME hash. The arguments are first joined #

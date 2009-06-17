@@ -1,10 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
-use Image::MetaData::JPEG::Tables qw(:Lookups);
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
 my ($image, $image2, $seg, $hash, $hash2, $d1, $d2, $dt, $ref, $ref2);
@@ -20,7 +15,7 @@ my $IFD_data = {
     &$val('XResolution')           => [31000, 65536],
     &$val('YResolution')           => [72, 1],
     &$val('ResolutionUnit')        =>  3,
-    'Software'                     => $cname,
+    'Software'                     => 'Image::MetaData::JPEG software',
     'DateTime'                     => ['1996:07:12 14:36:55'],
     'WhitePoint'                   => [12, 16, 8, 16],
     &$val('ReferenceBlackWhite')   => [7, 32, 5, 64, 18, 13, 0,0,0,0,0,0],
@@ -53,8 +48,11 @@ diag "Testing APP1 Exif data routines (IFD01_DATA)";
 plan tests => 59;
 #=======================================
 
+BEGIN { use_ok ($::tabname, qw(:Lookups)) or exit; }
+BEGIN { use_ok ($::pkgname) or exit; } # this must be loaded second!
+
 #########################
-$image = $cname->new($tphoto, '^APP1$');
+$image = newimage($tphoto, '^APP1$');
 $seg   = $image->retrieve_app1_Exif_segment(0);
 isnt( $seg, undef, "The Exif segment is there, hi!" );
 
@@ -180,9 +178,9 @@ $hash = $image->set_Exif_data($IFD_data, 'IFD1_DATA', 'ADD');
 is_deeply( $hash, {}, "adding without the IFD1 dir" );
 
 #########################
-$ref = \ "dummy";
+$ref = \ (my $buffer = "");
 $image->save($ref);
-$image2 = $cname->new($ref, '^APP1$');
+$image2 = newimage($ref, '^APP1$');
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################
@@ -305,7 +303,7 @@ ok( exists $$hash{&$val('Matteing')}, "... and an obsoleted one" );
 
 #########################
 $image->save($ref);
-$image2 = $cname->new($ref, '^APP1$');
+$image2 = newimage($ref, '^APP1$');
 is_deeply( $image2->{segments}, $image->{segments}, "Write and reread works");
 
 #########################

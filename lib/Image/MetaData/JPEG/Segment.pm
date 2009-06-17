@@ -4,7 +4,8 @@
 # See the COPYING and LICENSE files for license terms.    #
 ###########################################################
 package Image::MetaData::JPEG::Segment;
-use Image::MetaData::JPEG::Tables qw(:JPEGgrammar :Endianness :RecordTypes);
+use Image::MetaData::JPEG::data::Tables
+    qw(:JPEGgrammar :Endianness :RecordTypes);
 use Image::MetaData::JPEG::Backtrace;
 use Image::MetaData::JPEG::Record;
 no  integer;
@@ -589,8 +590,8 @@ sub store_record {
 # that this file becomes too large, only general interest #
 # methods are written here.                               #
 ###########################################################
-require 'Image/MetaData/JPEG/Segment_parsers.pl';
-require 'Image/MetaData/JPEG/Segment_dumpers.pl';
+require 'Image/MetaData/JPEG/parsers/parsers.pl';
+require 'Image/MetaData/JPEG/dumpers/dumpers.pl';
 
 # successful package load
 1;

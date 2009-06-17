@@ -1,9 +1,5 @@
-use Test::More;
-use strict;
-use warnings;
-use Image::MetaData::JPEG;
+BEGIN { require 't/test_setup.pl'; }
 
-my $cname  = 'Image::MetaData::JPEG';
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
 my $shop   = 'PHOTOSHOP';
@@ -35,8 +31,10 @@ diag "Testing APP13 IPTC set routines";
 plan tests => 53;
 #=======================================
 
+BEGIN { use_ok ($::pkgname) or exit; }
+
 #########################
-$image = $cname->new($tphoto);
+$image = newimage($tphoto);
 eval { $image->set_app13_data(undef, undef, undef) };
 is( $@, '', "No error with undefined arguments in set" );
 
@@ -135,9 +133,9 @@ $seg1->set_app13_data($ht, 'REPLACE', 'IPTC');
 $hashtot = $seg1->get_app13_data('NUMERIC', 'IPTC');
 $seg1->set_app13_data($hn, 'ADD', 'IPTC');
 push @{$$hashtot{$_}}, @{$$hn{$_}} for keys %$hn;
-$ref = \ "dummy";
+$ref = \ (my $buffer = "");
 $image->save($ref);
-$image = $cname->new($ref, 'APP13', 'FASTREADONLY');
+$image = newimage($ref, 'APP13', 'FASTREADONLY');
 isnt( $image, undef, "File written and re-read");
 
 #########################
@@ -224,7 +222,7 @@ $hash = $image->set_app13_data({'City' => []},'ADD', 'IPTC');
 is( scalar keys %$hash, 1, "... also with no elements" );
 
 #########################
-$image = $cname->new($tphoto); # reset
+$image = newimage($tphoto); # reset
 ok( $image, "From now on we are testing [$shop]" );
 
 #########################

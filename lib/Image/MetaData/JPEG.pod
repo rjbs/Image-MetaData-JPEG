@@ -651,7 +651,7 @@ about the L<APP1 segment
 structure|Image::MetaData::JPEG::Structures/Structure of an Exif APP1
 segment> for more details). This module provides a number of methods for
 managing Exif data without dealing with the details of the low level
-representation.  Note that, given the complicated structure of an Exif APP1
+representation. Note that, given the complicated structure of an Exif APP1
 segment (where extensive use of "pointers" is made), some digital cameras
 and graphic programs decide to leave some unused space in the JPEG
 file. The dump routines of this module, on the other hand, leave no unused
@@ -1066,18 +1066,39 @@ following code shows how to set and delete a thumbnail.
 
 =back
 
+=head2 XMP data ("APP1" segments)
+
+XMP (eXtensible Metadata Platform) is a technology, conceived by Adobe
+Systems, to tag graphic files with metadata, and to manage them during a
+lifetime made of multiple processing steps. Its serialisation (the actual
+way metadata are saved in the file) is based on RDF (Resource Description
+Framework) implemented as an application of XML. Its flexibility allows to
+accomodate existing, future and private metadata schemas. In a JPEG file,
+XMP information is included alongside L<Exif|/Exif data ("APP1" segments)>
+and L<IPTC|/Photoshop and IPTC data ("APP13" segments)> data, and is stored
+in an APP1 segment on its own starting with the XMP namespace URI and
+followed by the actual XMP packet (see L<XMP APP1 segment
+structure|Image::MetaData::JPEG::Structures/Structure of an XMP APP1
+segment> for more details).
+
+XMP was introduced in 2001 as part of Adobe Acrobat version 5.01. Adobe has
+a trademark on XMP, and retains control over its specification. Source code
+for the XMP software-development kit was released by Adobe, but with a
+custom license, whose compatibility with the GNU public license and
+open-source nature altogether is questioned.
+
 =head2 Photoshop and IPTC data ("APP13" segments)
 
-The Adobe's Photoshop program, a de-facto standard for image manipulation,
-has, since long, used the APP13 segment for storing non-graphical
-information, such as layers, paths, ecc..., including editorial information
-modelled on I<IPTC/NAA> recommendations. This module provides a number of
-methods for managing Photoshop/IPTC data without dealing with the details
-of the low level representation (although sometimes this means taking some
-decisions for the end user ....). The structure of the IPTC data block(s)
-is managed in detail and separately from the rest, although this block is a
-sort of "sub-case" of Photoshop information. The interface is intentionally
-similar to L<that|/Exif data ("APP1" segments)> for Exif data.
+Adobe's Photoshop program, a de-facto standard for image manipulation, has,
+since long, used the APP13 segment for storing non-graphical information,
+such as layers, paths, ecc..., including editorial information modelled on
+I<IPTC/NAA> recommendations. This module provides a number of methods for
+managing Photoshop/IPTC data without dealing with the details of the low
+level representation (although sometimes this means taking some decisions
+for the end user ....). The structure of the IPTC data block(s) is managed
+in detail and separately from the rest, although this block is a sort of
+"sub-case" of Photoshop information. The interface is intentionally similar
+to L<that|/Exif data ("APP1" segments)> for Exif data.
 
 All public methods have a I<$what> argument selecting which part of the
 APP13 segment you are working with. The default is 'IPTC'. If $what is
@@ -1103,9 +1124,14 @@ further details):
                   which is necessary to define a character set different
                   from ASCII (i.e., when you don't write or read in English).
     'PHOTOSHOP'   Alpha channels, colour information, transfer functions,
-                  and many other details concerning the visual rendering of
-                  the picture. This fields are most often only modified by
-                  an image manipulation program, and not directly by the user.
+    or 'PS_8BIM'  and many other details concerning the visual rendering of
+    or 'PS_8BPS'  the picture. These fields are most often only modified by
+    or 'PS_PHUT'  an image manipulation program, and not directly by the user.
+                  Recent versions of Photoshop (>= 4.0) use a resource data
+                  block type equal to '8BIM', and this is the default in
+                  this module (so, 'PHOTOSHOP' and 'PS_8BIM' are synonyms).
+                  However, some other older or undocumented resource data
+                  block types are also allowed.
 
 =over
 
@@ -1285,7 +1311,8 @@ L</JPEG::get_app13_data> does).
 
 The procedure of inspecting and modifying Photoshop data (i.e., non-IPTC
 data in a Photoshop-style APP13 segment) is analogous to that for IPTC
-data, but with I<$what> set to 'PHOTOSHOP'. The whole description will not
+data, but with I<$what> set to 'PHOTOSHOP' (alias 'PS_8BIM'), or to the
+seldom used 'PS_8BPS' and 'PS_PHUT'. The whole description will not
 be repeated here, have a look at the L<IPTC|/How to inspect and modify your
 IPTC data> section for it: this section takes only care to point out
 differences. If you are not acquainted with the structure of an APP13
@@ -1306,7 +1333,8 @@ how they are called in this case, "resource block identifiers") are checked
 for being in the allowed tags list (see the
 L<Photoshop-style|Image::MetaData::JPEG::TagLists/Valid tags for
 Photoshop-style APP13 data> tags' table for details). The IPTC/NAA tag is
-of course rejected: IPTC data must be inserted with $what set to 'IPTC'.
+of course rejected: IPTC data must be inserted with $what set to 'IPTC'
+or its siblings.
 
 Although not explicitly stated, it seems that non-IPTC Photoshop tags are
 non-repeatable (let me know if not so), so two resource blocks with the
