@@ -1,3 +1,4 @@
+use Test::More tests => 63;
 BEGIN { require 't/test_setup.pl'; }
 
 my $soi   = "\377\330";
@@ -20,7 +21,6 @@ sub trap_warn { local $SIG{'__WARN__'} = sub { $problem = shift };
 	       
 #=======================================
 diag "Testing [Image::MetaData::JPEG::Segment]";
-plan tests => 61;
 #=======================================
 
 BEGIN { use_ok ($::tabname, qw(:RecordTypes :TagsAPP0)) or exit; }

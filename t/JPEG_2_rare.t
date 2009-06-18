@@ -1,3 +1,4 @@
+use Test::More tests => 33;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -12,7 +13,6 @@ sub trap_error { local $SIG{'__'.$_[0].'__'} = sub { $problem = shift; };
 
 #=======================================
 diag "Testing JPEG segments seldom used methods";
-plan tests => 30;
 #=======================================
 
 BEGIN { use_ok ($::tabname, qw(:TagsAPP2)) or exit; }

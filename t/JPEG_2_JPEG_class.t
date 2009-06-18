@@ -1,3 +1,4 @@
+use Test::More tests => 62;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -13,7 +14,6 @@ my ($lines, $image, $image_2, $error, $handle, $buffer, $seg,
 
 #=======================================
 diag "Testing [Image::MetaData::JPEG]";
-plan tests => 60;
 #=======================================
 
 BEGIN { use_ok ($::pkgname) or exit; }

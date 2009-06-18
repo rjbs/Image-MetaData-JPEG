@@ -1,3 +1,4 @@
+use Test::More tests => 28;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -9,7 +10,6 @@ my $val = sub { return JPEG_lookup('APP1@IFD0', $_[0]) }; # IFD0/1 indifferent
 
 #=======================================
 diag "Testing APP1 Exif data routines (thumbnail)";
-plan tests => 26;
 #=======================================
 
 BEGIN { use_ok ($::tabname, qw(:Lookups)) or exit; }

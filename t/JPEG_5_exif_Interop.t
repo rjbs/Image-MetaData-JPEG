@@ -1,3 +1,4 @@
+use Test::More tests => 30;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -17,7 +18,6 @@ my $Interop_data = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (INTEROP_DATA)";
-plan tests => 29;
 #=======================================
 
 BEGIN { use_ok ($::pkgname) or exit; }

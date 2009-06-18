@@ -1,3 +1,4 @@
+use Test::More tests => 46;
 BEGIN { require 't/test_setup.pl'; }
 
 my $cphoto = 't/test_photo_copy.jpg';
@@ -29,7 +30,6 @@ my %table =
 
 #=======================================
 diag "Testing APP1 MakerNote parse / dump";
-plan tests => 44;
 #=======================================
 
 BEGIN { use_ok ($::tabname, qw(:Lookups)) or exit; }

@@ -1,3 +1,4 @@
+use Test::More tests => 25;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -14,7 +15,6 @@ my $reduce = sub {
 
 #===============================
 diag "Testing comment routines";
-plan tests => 24;
 #===============================
 
 BEGIN { use_ok ($::pkgname) or exit; }

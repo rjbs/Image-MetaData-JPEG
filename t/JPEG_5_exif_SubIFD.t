@@ -1,3 +1,4 @@
+use Test::More tests => 52;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -43,7 +44,6 @@ my $SubIFD_data = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (SUBIFD_DATA)";
-plan tests => 50;
 #=======================================
 
 BEGIN { use_ok ($::tabname, qw(:Lookups)) or exit; }

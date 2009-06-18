@@ -1,3 +1,4 @@
+use Test::More tests => 54;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -28,7 +29,6 @@ my $pht = { 'GridGuidesInfo'    => 'ddd',
 
 #=======================================
 diag "Testing APP13 IPTC set routines";
-plan tests => 53;
 #=======================================
 
 BEGIN { use_ok ($::pkgname) or exit; }

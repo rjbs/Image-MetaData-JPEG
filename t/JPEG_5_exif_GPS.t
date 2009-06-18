@@ -1,3 +1,4 @@
+use Test::More tests => 48;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -38,7 +39,6 @@ my $GPS_data = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (GPS_DATA)";
-plan tests => 47;
 #=======================================
 
 BEGIN { use_ok ($::pkgname) or exit; }

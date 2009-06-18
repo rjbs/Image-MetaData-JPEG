@@ -1,3 +1,4 @@
+use Test::More tests => 152;
 BEGIN { require 't/test_setup.pl'; }
 
 my ($record, $data, $result, $mykey, $key, $type,
@@ -22,7 +23,6 @@ sub trap_error { local $SIG{'__DIE__'} = sub { $problem = shift; };
 
 #=======================================
 diag "Testing [Image::MetaData::JPEG::Record]";
-plan tests => 150;
 #=======================================
 
 BEGIN { use_ok ($::tabname, qw(:RecordTypes :Endianness)) or exit; }

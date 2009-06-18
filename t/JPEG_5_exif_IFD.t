@@ -1,3 +1,4 @@
+use Test::More tests => 61;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -45,7 +46,6 @@ my $calculated = {
 
 #=======================================
 diag "Testing APP1 Exif data routines (IFD01_DATA)";
-plan tests => 59;
 #=======================================
 
 BEGIN { use_ok ($::tabname, qw(:Lookups)) or exit; }

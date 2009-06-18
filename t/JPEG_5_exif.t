@@ -1,3 +1,4 @@
+use Test::More tests => 44;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -7,7 +8,6 @@ my ($image, $thumbimage, $seg1, $seg2, $hash, $hash2, $records,
 
 #=======================================
 diag "Testing APP1 Exif data routines";
-plan tests => 42;
 #=======================================
 
 BEGIN { use_ok ($::tabname, qw(:RecordTypes)) or exit; }

@@ -1,19 +1,22 @@
+BEGIN { my $root    = "lib/Image/MetaData";
+	my $name    = "JPEG";
+	@::docfiles = map { "$root/$_" } ( "$name.pod",
+					   "$name/Structures.pod",
+					   "$name/TagLists.pod",
+					   "$name/MakerNotes.pod"); }
+
+BEGIN { my $Available = undef;
+	my $DoTests   = "use Test::More tests => " . scalar @::docfiles;
+	my $SkipTests = "use Test::More skip_all => 'Pod::Checker unavailable'";
+	eval { require Pod::Checker; $Available = 'yes'; };
+	if ($Available) { eval "$DoTests"; } else { eval "$SkipTests"; } }
+
 BEGIN { require 't/test_setup.pl'; }
 
-my $root    = "lib/Image/MetaData";
-my $name    = "JPEG";
-my $checker_module = "Pod::Checker";
 my $itsme = exists $ENV{USER} && $ENV{USER} eq 'bettelli';
-my @docfiles = map { "$root/$_" } ( "$name.pod",
-				    "$name/Structures.pod",
-				    "$name/TagLists.pod",
-				    "$name/MakerNotes.pod");
 
 #=======================================
-diag "Checking documentation syntax with $checker_module";
-eval "require $checker_module";
-if ($@) { plan skip_all => "You don't have the $checker_module module"; }
-else    { plan tests => scalar @docfiles; }
+diag "Checking documentation syntax with Pod::Checker";
 #=======================================
 
 for my $filename (@docfiles) {

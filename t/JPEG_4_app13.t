@@ -1,3 +1,4 @@
+use Test::More tests => 55;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
@@ -6,7 +7,6 @@ my ($image, $seg1, $seg2, $rec, $val, $hash, $num, $segs, $fh, $desc1, $desc2);
 
 #=======================================
 diag "Testing APP13 IPTC basic routines";
-plan tests => 53;
 #=======================================
 
 BEGIN { use_ok ($::tabname, qw(:TagsAPP13)) or exit; }
