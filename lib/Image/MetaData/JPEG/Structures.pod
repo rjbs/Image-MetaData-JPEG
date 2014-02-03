@@ -10,6 +10,8 @@
 # type "perldoc <name_of_this_file>".                     #
 ###########################################################
 
+=encoding utf-8
+
 =head1 NAME
 
 Image::MetaData::JPEG::Structures - This document describes the structure
@@ -630,7 +632,7 @@ JPEG Segments):
 The reference document for the IPTC standard is:
 
    B<"IPTC-NAA: Information Interchange Model", version 4, 1-Jul-1999, 
-   Comité International des Télécommunications de Presse>
+   ComitÃ© International des TÃ©lÃ©communications de Presse>
 
 =head1 AUTHOR
 

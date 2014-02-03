@@ -10,6 +10,8 @@
 # type "perldoc <name_of_this_file>".                     #
 ###########################################################
 
+=encoding utf-8
+
 =head1 NAME
 
 Image::MetaData::JPEG - Perl extension for showing/modifying JPEG (meta)data.
@@ -1541,7 +1543,7 @@ expanded. The output is nicely formatted, with indentation and
 colouration; this program is a great tool for inspecting a JPEG/TIFF
 structure while debugging.
 
-=item "libexif" by Lutz Müller
+=item "libexif" by Lutz MÃ¼ller
 
 This is a library, written in C, for parsing, editing, and saving Exif
 data. All Exif tags described in Exif standard 2.1 are supported. Libexif

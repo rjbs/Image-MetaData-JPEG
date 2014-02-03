@@ -183,7 +183,7 @@ sub parse_resource_data_block {
 # order, but this rule is currently not enforced here.    #
 #=========================================================#
 # Ref: "IPTC-NAA: Information Interchange Model Version 4"#
-#      Comité Internat. des Télécommunications de Presse. #
+#      ComitÃ© Internat. des TÃ©lÃ©communications de Presse. #
 ###########################################################
 sub parse_IPTC_dataset {
     my ($this, $offset) = @_;
