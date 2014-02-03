@@ -1,3 +1,9 @@
+2014-02-02  Ricardo Signes    <rjbs@cpan.org>
+
+  * only run Pod::Checker tests when releasing
+  * encode all source at UTF-8, including comments
+  * add =encoding directives to Pod where needed
+
 2009-06-18  Stefano Bettelli  <bettelli@cpan.org>
 
 	* lib/Image/MetaData/JPEG.pm: setting $VERSION to 0.153, and
