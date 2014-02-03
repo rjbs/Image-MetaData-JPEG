@@ -5,11 +5,19 @@ BEGIN { my $root    = "lib/Image/MetaData";
 					   "$name/TagLists.pod",
 					   "$name/MakerNotes.pod"); }
 
-BEGIN { my $Available = undef;
-	my $DoTests   = "use Test::More tests => " . scalar @::docfiles;
-	my $SkipTests = "use Test::More skip_all => 'Pod::Checker unavailable'";
-	eval { require Pod::Checker; $Available = 'yes'; };
-	if ($Available) { eval "$DoTests"; } else { eval "$SkipTests"; } }
+use Test::More;
+
+BEGIN {
+  unless ($ENV{RELEASE_TESTING}) {
+    plan skip_all => "test only run during release process";
+  }
+  my $Available = eval { require Pod::Checker; 1 };
+	if (! $Available) {
+	  plan skip_all => 'Pod::Checker unavailable';
+	}
+
+  plan tests => 0+@::docfiles;
+}
 
 BEGIN { require 't/test_setup.pl'; }
 
