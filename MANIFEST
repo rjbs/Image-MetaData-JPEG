@@ -62,4 +62,3 @@ lib/Image/MetaData/JPEG/access/various.pl
 lib/Image/MetaData/JPEG/access/comments.pl
 lib/Image/MetaData/JPEG/access/app1_exif.pl
 lib/Image/MetaData/JPEG/access/app13.pl
-META.yml
