@@ -259,7 +259,7 @@ sub output_segment_data {
     $preamble .= pack("n", 2 + $length)
 	unless $name =~ /SOI|EOI|RST|ECS|Post-EOI/;
     # output the preamble and the data buffer (return the status)
-    return print {$out} $preamble, $this->data(0, $length);
+    return print {$out} $preamble . $this->data(0, $length);
 }
 
 ###########################################################

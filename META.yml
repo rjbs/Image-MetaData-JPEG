@@ -1,6 +1,7 @@
 --- #YAML:1.0
 name:                Image-MetaData-JPEG
-version:             0.154
+version:             0.155
+
 
 abstract:            Perl extension for showing/modifying JPEG (meta)data.
 license:             ~

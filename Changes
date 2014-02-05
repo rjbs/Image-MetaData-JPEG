@@ -1,3 +1,7 @@
+2014-02-04  Ricardo Signes    <rjbs@cpan.org>
+
+  * avoid having output corrupted by assignment to $,
+
 2014-02-02  Ricardo Signes    <rjbs@cpan.org>
 
   * only run Pod::Checker tests when releasing
