@@ -733,8 +733,8 @@ C-strings).
   2:xx datasets from the application record (editorial tags)
   -------------------------------------------------------------------------
     0  RecordVersion                 N [  2   ] binary, always 2 in JPEGs ?
-    3  ObjectTypeReference           N [ 3-67 ] /\d{2}?:[\w\s]{0,64}?/
-    4  ObjectAttributeReference        [ 4-68 ] /\d{3}?:[\w\s]{0,64}?/
+    3  ObjectTypeReference           N [ 3-67 ] /\d{2}:[\w\s]{0,64}?/
+    4  ObjectAttributeReference        [ 4-68 ] /\d{3}:[\w\s]{0,64}?/
     5  ObjectName                    N [ <=64 ] line (see note 5)
     7  EditStatus                    N [ <=64 ] line (see note 5)
     8  EditorialUpdate               N [  2   ] /01/
@@ -767,7 +767,7 @@ C-strings).
    90  City                          N [ <=32 ] line (see note 5)
    92  SubLocation                   N [ <=32 ] line (see note 5)
    95  Province/State                N [ <=32 ] line (see note 5)
-  100  Country/PrimaryLocationCode   N [  3   ] /[A-Z]{3}?/
+  100  Country/PrimaryLocationCode   N [  3   ] /[A-Z]{3}/
   101  Country/PrimaryLocationName   N [ <=64 ] line (see note 5)
   103  OriginalTransmissionReference N [ <=32 ] line (see note 5)
   105  Headline                      N [ <=256] line (see note 5)
@@ -782,8 +782,8 @@ C-strings).
   131  ImageOrientation              N [  1   ] /P|L|S/
   135  LanguageIdentifier            N [ 2-3  ] /[a-zA-Z]{2,3}?/
   150  AudioType                     N [  2   ] /[012][ACMQRSTVW]/
-  151  AudioSamplingRate             N [  6   ] /\d{6}?/
-  152  AudioSamplingResolution       N [  2   ] /\d{2}?/
+  151  AudioSamplingRate             N [  6   ] /\d{6}/
+  152  AudioSamplingResolution       N [  2   ] /\d{2}/
   153  AudioDuration                 N [  6   ] duration (see note 6)
   154  AudioOutcue                   N [ <=64 ] line (see note 5)
   200  ObjDataPreviewFileFormat      N [  2   ] invalid, binary (see 1:20)
@@ -822,7 +822,7 @@ C-strings).
   6) A "duration" is stored like a "time", but there is no time zone spec;
      this means that the string is only six characters wide (see also note 3).
   7) The complicated regular expression for the SubjectReference is the
-     following: /[$validchar]{1,32}?:[01]\d{7}?(:[$validchar\s]{0,64}?){3}?/,
+     following: /[$validchar]{1,32}?:[01]\d{7}(:[$validchar\s]{0,64}?){3}/,
      where $validchar is '\040-\051\053-\071\073-\076\100-\176'.
 
 =head1 AUTHOR

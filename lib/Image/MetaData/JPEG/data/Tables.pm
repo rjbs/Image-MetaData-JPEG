@@ -739,7 +739,7 @@ my $IPTC_re_date = $re_date;                                # CCYYMMDD full  #
 my $IPTC_re_dura = $re_time;                                # HHMMSS         #
 my $IPTC_re_time = $IPTC_re_dura . '[\+-]' . $re_zone;      # HHMMSS+/-HHMM  #
 my $vchr         = '\040-\051\053-\071\073-\076\100-\176';  # (SubjectRef.)  #
-my $IPTC_re_sure='['.$vchr.']{1,32}?:[01]\d{7}?(:['.$vchr.'\s]{0,64}?){3}?'; #
+my $IPTC_re_sure='['.$vchr.']{1,32}?:[01]\d{7}(:['.$vchr.'\s]{0,64}?){3}';   #
 #--- Mandatory records ------------------------------------------------------#
 my $HASH_IPTC_MANDATORY_1 = {'ModelVersion'  => "\000\004" };                #
 my $HASH_IPTC_MANDATORY_2 = {'RecordVersion' => "\000\002" };                #
@@ -762,8 +762,8 @@ my $HASH_IPTC_GENERAL_1 =                                                    #
 #--- Legal records' list ( datasets 2:xx ) ----------------------------------#
 my $HASH_IPTC_GENERAL_2 =                                                    #
 {0   => ['RecordVersion',               'N', 2,  2, 'binary'              ], #
- 3   => ['ObjectTypeReference',         'N', 3, 67, '\d{2}?:[\w\s]{0,64}?'], #
- 4   => ['ObjectAttributeReference',    ' ', 4, 68, '\d{3}?:[\w\s]{0,64}?'], #
+ 3   => ['ObjectTypeReference',         'N', 3, 67, '\d{2}:[\w\s]{0,64}?' ], #
+ 4   => ['ObjectAttributeReference',    ' ', 4, 68, '\d{3}:[\w\s]{0,64}?' ], #
  5   => ['ObjectName',                  'N', 1, 64, $IPTC_re_line         ], #
  7   => ['EditStatus',                  'N', 1, 64, $IPTC_re_line         ], #
  8   => ['EditorialUpdate',             'N', 2,  2, '01'                  ], #
@@ -796,7 +796,7 @@ my $HASH_IPTC_GENERAL_2 =                                                    #
  90  => ['City',                        'N', 1, 32, $IPTC_re_line         ], #
  92  => ['SubLocation',                 'N', 1, 32, $IPTC_re_line         ], #
  95  => ['Province/State',              'N', 1, 32, $IPTC_re_line         ], #
- 100 => ['Country/PrimaryLocationCode', 'N', 3,  3, '[A-Z]{3}?'           ], #
+ 100 => ['Country/PrimaryLocationCode', 'N', 3,  3, '[A-Z]{3}'            ], #
  101 => ['Country/PrimaryLocationName', 'N', 1, 64, $IPTC_re_line         ], #
  103 => ['OriginalTransmissionReference','N',1, 32, $IPTC_re_line         ], #
  105 => ['Headline',                    'N', 1,256, $IPTC_re_line         ], #
@@ -811,8 +811,8 @@ my $HASH_IPTC_GENERAL_2 =                                                    #
  131 => ['ImageOrientation',            'N', 1,  1, '[PLS]'               ], #
  135 => ['LanguageIdentifier',          'N', 2,  3, '[a-zA-Z]{2,3}?'      ], #
  150 => ['AudioType',                   'N', 2,  2, '[012][ACMQRSTVW]'    ], #
- 151 => ['AudioSamplingRate',           'N', 6,  6, '\d{6}?'              ], #
- 152 => ['AudioSamplingResolution',     'N', 2,  2, '\d{2}?'              ], #
+ 151 => ['AudioSamplingRate',           'N', 6,  6, '\d{6}'               ], #
+ 152 => ['AudioSamplingResolution',     'N', 2,  2, '\d{2}'               ], #
  153 => ['AudioDuration',               'N', 6,  6, $IPTC_re_dura         ], #
  154 => ['AudioOutcue',                 'N', 1, 64, $IPTC_re_line         ], #
  200 => ['ObjDataPreviewFileFormat',    'N', 2,  2, 'invalid,binary'      ], #
