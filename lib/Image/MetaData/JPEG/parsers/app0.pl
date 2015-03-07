@@ -72,15 +72,25 @@ sub parse_app0 {
     my ($this) = @_;
     my $offset = 0;
     my $thumb_x_dim = 0; my $thumb_y_dim = 0;
-    # first, decode the identifier. It can be simple
-    # (JFIF), or extended (JFXX). We need five bytes
+
+    # Decode the APP0 app-extension identifier. It's an arbitrarily
+    # long string, terminated by binary zero. Find length:
+    my $length = 1; # assuming the app id is at least one byte long should be safe
+    for(;;){
+	my $byte = $this->data($length, 1);
+	last if $byte eq "\x00";
+	last if $length >= $this->size(); # no infinite loop
+	$length++;
+    }
     my $identifier = $this->store_record
-	('Identifier', $ASCII, $offset, length $APP0_JFIF_TAG)->get_value();
-    # go to the relevant decoding routine depending on it
+	('Identifier', $ASCII, $offset, $length + 1)->get_value(); # +1 as Tables.pm currently includes the null-terminator
+    # go to the appropriate decoding routine depending on found identifier
     goto APP0_simple   if $identifier eq $APP0_JFIF_TAG;
     goto APP0_extended if $identifier eq $APP0_JFXX_TAG;
-    # if we are still here, let us die of an unknown identifier
-    $this->die("Unknown identifier ($identifier)");
+    # JPEG specs tell us to simply ignore unknown identifiers
+    # $this->die("Unknown identifier ($identifier)");
+    $offset += ($this->size() - $length - 1); # skip over (NOPARSE) unknown data
+    goto APP0_END;
   APP0_simple:
     # as far as I know, in a JFIF APP0 there are always the following
     # seven fields, even if the thumbnail is absent. This means that

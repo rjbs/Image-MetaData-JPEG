@@ -30,6 +30,8 @@ t/mknt_Pentax_Optio430.jpg
 t/mknt_Sony_MVC-CD500.jpg
 t/mknt_Toshiba_PDRM70.jpg
 t/test_frankenstein.jpg
+t/test_APP0_Ocad.jpg
+t/test_APP0_AJPEG.jpg
 t/test_photo.desc
 t/test_photo.jpg
 t/test_thumbnail.jpg
