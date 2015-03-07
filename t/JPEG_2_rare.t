@@ -1,9 +1,11 @@
-use Test::More tests => 33;
+use Test::More tests => 45;
 BEGIN { require 't/test_setup.pl'; }
 
 my $tphoto = 't/test_photo.jpg';
 my $tdata  = 't/test_photo.desc';
 my $tfrank = 't/test_frankenstein.jpg';
+my $t_app0_ocad = 't/test_APP0_Ocad.jpg'; # file with photobucket's Ocad "marker" segment
+my $t_app0_ajpeg = 't/test_APP0_AJPEG.jpg'; # file with Animated JPEG segment
 my $trim = sub { join '\n', map { s/^.*\"(.*)\".*$/$1/; $_ }
 		 grep { /0:/ } split '\n', $_[0] };
 my ($image, @segs, $seg, $hash, $num, $rec, $problem, $data);
@@ -156,6 +158,54 @@ like( $problem, qr/marker not found/, "Error on next marker not found" );
 $data = "\377\330\377\376\000\010com"; # not enough data
 trap_error('DIE', 'newimage(\ $data)');
 like( $problem, qr/data not found/, "Error on segment too short" );
+
+
+# test parsing a photobucket file with APP0 "Ocad" marker
+#########################
+{ local $SIG{'__WARN__'} = sub { $problem = shift; };
+  $problem = undef; $image = newimage($t_app0_ocad); }
+isnt( $image, undef, "test_APP0_Ocad file read" );
+
+#########################
+ok( !$problem, "No warnings generated during file read" );
+
+#########################
+$num = scalar $image->get_segments();
+is( $num, 37, "Number of segments is correct" );
+
+#########################
+$num = scalar grep { $_->{error} } $image->get_segments();
+is( $num, 0, "No segment shows an error condition");
+
+#########################
+@segs = $image->get_segments('APP0');
+$num = grep { /^Ocad\$Rev: 14797/i } map { $_->search_record_value('Identifier') } @segs;
+is( $num, 1, "APP0 Ocad identifier found" );
+is( length($segs[1]->{records}->[0]->{values}->[0]), 17+1, "APP0 Ocad identifier length ok" ); # currently Tables.pm includes the null-terminator, so does app0.pl
+
+
+# test parsing an Animated JPEG file with APP0 "AJPEG" marker
+#########################
+{ local $SIG{'__WARN__'} = sub { $problem = shift; };
+  $problem = undef; $image = newimage($t_app0_ajpeg); }
+isnt( $image, undef, "test_APP0_AJPEG file read" );
+
+#########################
+ok( !$problem, "No warnings generated during file read" );
+
+#########################
+$num = scalar $image->get_segments();
+is( $num, 14, "Number of segments is correct" );
+
+#########################
+$num = scalar grep { $_->{error} } $image->get_segments();
+is( $num, 0, "No segment shows an error condition");
+
+#########################
+@segs = $image->get_segments('APP0');
+$num = grep { /^AJPEG/ } map { $_->search_record_value('Identifier') } @segs;
+is( $num, 1, "APP0 AJPEG identifier found" );
+is( length($segs[1]->{records}->[0]->{values}->[0]), 5+1, "APP0 AJPEG identifier length ok" ); # currently Tables.pm includes the null-terminator, so does app0.pl
 
 ### Local Variables: ***
 ### mode:perl ***
