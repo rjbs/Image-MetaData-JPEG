@@ -1,7 +1,8 @@
-2015-05-10  Ricardo Signes    <rjbs@cpan.org>
+0.158     2015-05-11  Ricardo Signes    <rjbs@cpan.org>
 
-  * deal with >4b APP0 (thanks, isync!)
-  * add metadata to distribution
+        - deal with >4b APP0 (thanks, isync!)
+        - add metadata to distribution
+        - clean up pod abstracts
 
 2014-05-12  Ricardo Signes    <rjbs@cpan.org>
 
