@@ -12,7 +12,7 @@ no  integer;
 use strict;
 use warnings;
 
-our $VERSION = '0.156';
+our $VERSION = '0.157';
 
 ###########################################################
 # These simple methods should be used instead of standard #

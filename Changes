@@ -1,3 +1,8 @@
+2015-05-10  Ricardo Signes    <rjbs@cpan.org>
+
+  * deal with >4b APP0 (thanks, isync!)
+  * add metadata to distribution
+
 2014-05-12  Ricardo Signes    <rjbs@cpan.org>
 
   * avoid useless use of ? modifier on fixed-length {n} repetition
