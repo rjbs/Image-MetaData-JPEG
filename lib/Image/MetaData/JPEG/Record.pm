@@ -91,6 +91,9 @@ sub new {
     $endian = $BIG_ENDIAN unless defined $endian;
     # get the actual length of the $$dataref scalar
     my $current  = length($$dataref);
+    if(!defined($current)) {
+	$current = length($dataref);
+    }
     # estimate the right length of $data for numeric types
     # (remember that some types can return "no expectation", i.e. 0).
     my $expected = $pkg->get_size($atype, $count);
